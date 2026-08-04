@@ -1,0 +1,193 @@
+# TEDxUMT Backend Development Roadmap
+
+## Phase 0 — Foundation
+
+- [ ] Configure virtual environment
+- [ ] Install dependencies
+- [ ] Configure environment variables
+- [ ] Configure CORS
+- [ ] Configure Media
+- [ ] Configure Static files
+- [ ] Verify Django settings
+- [ ] Initial Git commit
+
+---
+
+# Phase 1 — Common App
+
+- [ ] Create common app
+- [ ] BaseModel
+- [ ] TimeStampedModel
+- [ ] ActiveModel
+- [ ] StatusChoices
+- [ ] Validators
+- [ ] Utilities
+- [ ] Tests
+
+---
+
+# Phase 2 — Core App
+
+- [ ] WebsiteSettings
+- [ ] HeroSection
+- [ ] NavigationItem
+- [ ] SocialLink
+- [ ] FAQ
+
+- [ ] Admin
+- [ ] Serializers
+- [ ] ViewSets
+- [ ] URLs
+- [ ] Migrations
+- [ ] Tests
+
+---
+
+# Phase 3 — Website App
+
+- [ ] AboutSection
+- [ ] CoreValue
+- [ ] Message
+
+- [ ] Admin
+- [ ] Serializers
+- [ ] ViewSets
+- [ ] URLs
+- [ ] Tests
+
+---
+
+# Phase 4 — Events
+
+- [ ] Venue
+- [ ] Event
+- [ ] EventScheduleItem
+
+- [ ] Admin
+- [ ] Serializers
+- [ ] ViewSets
+- [ ] URLs
+- [ ] Tests
+
+---
+
+# Phase 5 — Speakers
+
+- [ ] Speaker
+
+- [ ] Admin
+- [ ] Serializers
+- [ ] ViewSets
+- [ ] URLs
+- [ ] Tests
+
+---
+
+# Phase 6 — Team
+
+- [ ] Department
+- [ ] TeamMember
+
+- [ ] Admin
+- [ ] Serializers
+- [ ] ViewSets
+- [ ] URLs
+- [ ] Tests
+
+---
+
+# Phase 7 — Gallery
+
+- [ ] GalleryAlbum
+- [ ] GalleryImage
+
+- [ ] Admin
+- [ ] Serializers
+- [ ] ViewSets
+- [ ] URLs
+- [ ] Tests
+
+---
+
+# Phase 8 — Blog
+
+- [ ] Category
+- [ ] Tag
+- [ ] BlogPost
+
+- [ ] Admin
+- [ ] Serializers
+- [ ] ViewSets
+- [ ] URLs
+- [ ] Tests
+
+---
+
+# Phase 9 — Sponsors
+
+- [ ] SponsorTier
+- [ ] Sponsor
+
+- [ ] Admin
+- [ ] Serializers
+- [ ] ViewSets
+- [ ] URLs
+- [ ] Tests
+
+---
+
+# Phase 10 — Applications
+
+- [ ] ContactMessage
+- [ ] NewsletterSubscriber
+- [ ] SpeakerApplication
+- [ ] VolunteerApplication
+- [ ] PartnerApplication
+
+- [ ] Validation
+- [ ] APIs
+- [ ] Tests
+
+---
+
+# Phase 11 — Frontend Integration
+
+- [ ] Axios configuration
+- [ ] API service layer
+- [ ] Events integration
+- [ ] Speakers integration
+- [ ] Team integration
+- [ ] Blog integration
+- [ ] Gallery integration
+- [ ] Sponsors integration
+- [ ] Contact API
+- [ ] Newsletter API
+
+---
+
+# Phase 12 — Production
+
+- [ ] Authentication
+- [ ] Permissions
+- [ ] Pagination
+- [ ] Filtering
+- [ ] Search
+- [ ] Logging
+- [ ] Error handling
+- [ ] Documentation
+- [ ] Deployment
+- [ ] Final testing
+
+---
+
+# Final Checklist
+
+- [ ] All models complete
+- [ ] Admin fully functional
+- [ ] APIs documented
+- [ ] Frontend connected
+- [ ] Database migrated
+- [ ] Production deployment successful
+- [ ] README updated
+- [ ] Documentation complete
+- [ ] Version 1.0 Released

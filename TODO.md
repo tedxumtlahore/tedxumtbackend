@@ -45,15 +45,15 @@
 
 # Phase 3 — Website App
 
-- [ ] AboutSection
-- [ ] CoreValue
-- [ ] Message
+- [x] AboutSection
+- [x] CoreValue
+- [x] Message
 
-- [ ] Admin
-- [ ] Serializers
-- [ ] ViewSets
-- [ ] URLs
-- [ ] Tests
+- [x] Admin
+- [x] Serializers
+- [x] ViewSets
+- [x] URLs
+- [x] Tests
 
 ---
 

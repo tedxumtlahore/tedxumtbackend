@@ -28,18 +28,18 @@
 
 # Phase 2 — Core App
 
-- [ ] WebsiteSettings
-- [ ] HeroSection
-- [ ] NavigationItem
-- [ ] SocialLink
-- [ ] FAQ
+- [x] WebsiteSettings
+- [x] HeroSection
+- [x] NavigationItem
+- [x] SocialLink
+- [x] FAQ
 
-- [ ] Admin
-- [ ] Serializers
-- [ ] ViewSets
-- [ ] URLs
+- [x] Admin
+- [x] Serializers
+- [x] ViewSets
+- [x] URLs
 - [ ] Migrations
-- [ ] Tests
+- [x] Tests
 
 ---
 

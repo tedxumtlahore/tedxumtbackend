@@ -1,5 +1,5 @@
 """
-Core admin — CMS panel for global settings, navigation, social links, FAQs.
+Core admin - CMS panel for global settings, navigation, social links, FAQs.
 """
 
 from django.contrib import admin
@@ -9,6 +9,11 @@ from .models import WebsiteSettings, HeroSection, NavigationItem, SocialLink, FA
 
 @admin.register(WebsiteSettings)
 class WebsiteSettingsAdmin(admin.ModelAdmin):
+    list_display = ['site_name', 'tagline', 'email', 'is_active', 'updated_at']
+    search_fields = ['site_name', 'tagline', 'description', 'email', 'address']
+    list_filter = ['is_active']
+    ordering = ['-updated_at']
+    readonly_fields = ['created_at', 'updated_at']
     fieldsets = (
         ('Organization Identity', {
             'fields': ('site_name', 'tagline', 'description'),
@@ -26,6 +31,9 @@ class WebsiteSettingsAdmin(admin.ModelAdmin):
         ('Footer', {
             'fields': ('footer_tagline', 'copyright_text', 'ted_event_url'),
         }),
+        ('System', {
+            'fields': ('is_active', 'created_at', 'updated_at'),
+        }),
     )
 
     def has_add_permission(self, request):
@@ -37,6 +45,11 @@ class WebsiteSettingsAdmin(admin.ModelAdmin):
 
 @admin.register(HeroSection)
 class HeroSectionAdmin(admin.ModelAdmin):
+    list_display = ['eyebrow', 'headline_line1', 'headline_line2', 'is_active', 'updated_at']
+    search_fields = ['eyebrow', 'headline_line1', 'headline_line2', 'subheading']
+    list_filter = ['is_active']
+    ordering = ['-updated_at']
+    readonly_fields = ['image_preview', 'created_at', 'updated_at']
     fieldsets = (
         ('Headline', {
             'fields': ('eyebrow', 'headline_line1', 'headline_line2', 'subheading'),
@@ -48,11 +61,13 @@ class HeroSectionAdmin(admin.ModelAdmin):
             ),
         }),
         ('Background Image', {
-            'fields': ('background_image',),
+            'fields': ('background_image', 'image_preview'),
             'description': 'Upload a full-width campus/event image. Recommended: 1920×1080px.',
         }),
+        ('System', {
+            'fields': ('is_active', 'created_at', 'updated_at'),
+        }),
     )
-    readonly_fields = []
 
     def image_preview(self, obj):
         if obj.background_image:
@@ -69,23 +84,29 @@ class HeroSectionAdmin(admin.ModelAdmin):
 
 @admin.register(NavigationItem)
 class NavigationItemAdmin(admin.ModelAdmin):
-    list_display = ['label', 'url', 'order', 'is_visible', 'open_in_new_tab']
-    list_editable = ['order', 'is_visible']
+    list_display = ['label', 'url', 'order', 'is_visible', 'open_in_new_tab', 'updated_at']
+    list_editable = ['order', 'is_visible', 'open_in_new_tab']
     list_display_links = ['label']
-    ordering = ['order']
+    search_fields = ['label', 'url']
+    list_filter = ['is_visible', 'open_in_new_tab']
+    ordering = ['order', 'label']
 
 
 @admin.register(SocialLink)
 class SocialLinkAdmin(admin.ModelAdmin):
-    list_display = ['platform', 'display_label', 'url', 'order', 'is_visible']
+    list_display = ['platform', 'display_label', 'url', 'order', 'is_visible', 'updated_at']
     list_editable = ['order', 'is_visible']
     list_display_links = ['platform']
-    ordering = ['order']
+    search_fields = ['display_label', 'url', 'aria_label']
+    list_filter = ['platform', 'is_visible']
+    ordering = ['order', 'platform']
 
 
 @admin.register(FAQ)
 class FAQAdmin(admin.ModelAdmin):
-    list_display = ['question', 'order', 'is_visible']
+    list_display = ['question', 'order', 'is_visible', 'updated_at']
     list_editable = ['order', 'is_visible']
     list_display_links = ['question']
-    ordering = ['order']
+    search_fields = ['question', 'answer']
+    list_filter = ['is_visible']
+    ordering = ['order', 'question']

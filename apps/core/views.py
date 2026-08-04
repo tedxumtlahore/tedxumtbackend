@@ -1,9 +1,10 @@
 """
-Core views — read-only API endpoints for global settings.
+Core views - legacy read-only API endpoints for global settings.
 """
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+
 from .models import WebsiteSettings, HeroSection, NavigationItem, SocialLink, FAQ
 from .serializers import (
     WebsiteSettingsSerializer,

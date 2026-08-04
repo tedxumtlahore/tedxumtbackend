@@ -73,13 +73,13 @@
 
 # Phase 5 — Speakers
 
-- [ ] Speaker
+- [x] Speaker
 
-- [ ] Admin
-- [ ] Serializers
-- [ ] ViewSets
-- [ ] URLs
-- [ ] Tests
+- [x] Admin
+- [x] Serializers
+- [x] ViewSets
+- [x] URLs
+- [x] Tests
 
 ---
 

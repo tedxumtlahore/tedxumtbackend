@@ -15,14 +15,14 @@
 
 # Phase 1 — Common App
 
-- [ ] Create common app
-- [ ] BaseModel
-- [ ] TimeStampedModel
-- [ ] ActiveModel
-- [ ] StatusChoices
-- [ ] Validators
-- [ ] Utilities
-- [ ] Tests
+- [x] Create common app
+- [x] BaseModel
+- [x] TimeStampedModel
+- [x] ActiveModel
+- [x] StatusChoices
+- [x] Validators
+- [x] Utilities
+- [x] Tests
 
 ---
 

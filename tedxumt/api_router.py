@@ -5,6 +5,9 @@ Central API router — all /api/ endpoints assembled here.
 from django.urls import path, include
 
 urlpatterns = [
+    # Common metadata and health endpoints
+    path('', include('apps.common.urls')),
+
     # Core: settings, navigation, hero, FAQs
     path('', include('apps.core.urls')),
 

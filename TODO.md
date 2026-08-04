@@ -59,15 +59,15 @@
 
 # Phase 4 — Events
 
-- [ ] Venue
-- [ ] Event
-- [ ] EventScheduleItem
+- [x] Venue
+- [x] Event
+- [x] EventScheduleItem
 
-- [ ] Admin
-- [ ] Serializers
-- [ ] ViewSets
-- [ ] URLs
-- [ ] Tests
+- [x] Admin
+- [x] Serializers
+- [x] ViewSets
+- [x] URLs
+- [x] Tests
 
 ---
 

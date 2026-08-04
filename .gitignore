@@ -1,0 +1,92 @@
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Compiled extensions
+*.so
+
+# ==========================
+# Virtual Environment
+# ==========================
+venv/
+.venv/
+env/
+ENV/
+
+# ==========================
+# Environment Variables
+# ==========================
+.env
+
+# ==========================
+# Django
+# ==========================
+*.log
+db.sqlite3
+media/
+staticfiles/
+
+# ==========================
+# Migrations (Optional)
+# Keep __init__.py
+# Ignore only if project is still in development
+# apps/**/migrations/*
+# !apps/**/migrations/__init__.py
+
+# ==========================
+# VS Code
+# ==========================
+.vscode/
+
+# ==========================
+# Cursor
+# ==========================
+.cursor/
+
+# ==========================
+# macOS
+# ==========================
+.DS_Store
+
+# ==========================
+# Windows
+# ==========================
+Thumbs.db
+Desktop.ini
+
+# ==========================
+# Testing
+# ==========================
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================
+# Type Checkers
+# ==========================
+.mypy_cache/
+.pyre/
+.pytype/
+
+# ==========================
+# Build
+# ==========================
+build/
+dist/
+*.egg-info/
+
+# ==========================
+# Node
+# ==========================
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-lock.yaml
+
+# ==========================
+# IDE
+# ==========================
+.idea/

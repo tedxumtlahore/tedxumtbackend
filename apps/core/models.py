@@ -1,12 +1,14 @@
 """
-Core models — global site settings, hero, navigation, social links, FAQs.
-These are singleton/global settings that power the entire site.
+Core models - global site settings, hero, navigation, social links, FAQs.
+These models power the public CMS surface for the website.
 """
 
 from django.db import models
 
+from apps.common.models import BaseModel
 
-class SingletonModel(models.Model):
+
+class SingletonModel(BaseModel):
     """
     Abstract base that ensures only one row exists.
     Used for global settings.
@@ -20,7 +22,7 @@ class SingletonModel(models.Model):
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        pass  # cannot delete the singleton
+        return None
 
     @classmethod
     def load(cls):
@@ -78,6 +80,7 @@ class WebsiteSettings(SingletonModel):
     class Meta:
         verbose_name = 'Website Settings'
         verbose_name_plural = 'Website Settings'
+        ordering = ['-created_at']
 
     def __str__(self):
         return 'Website Settings'
@@ -113,12 +116,13 @@ class HeroSection(SingletonModel):
     class Meta:
         verbose_name = 'Hero Section'
         verbose_name_plural = 'Hero Section'
+        ordering = ['-created_at']
 
     def __str__(self):
         return 'Hero Section'
 
 
-class NavigationItem(models.Model):
+class NavigationItem(BaseModel):
     """Navbar links — orderable, toggleable."""
 
     label = models.CharField(max_length=50)
@@ -128,7 +132,7 @@ class NavigationItem(models.Model):
     open_in_new_tab = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ['order']
+        ordering = ['order', 'label']
         verbose_name = 'Navigation Item'
         verbose_name_plural = 'Navigation Items'
 
@@ -136,20 +140,19 @@ class NavigationItem(models.Model):
         return self.label
 
 
-class SocialLink(models.Model):
+class SocialLink(BaseModel):
     """Social media links shown in footer and speaker profiles."""
 
-    PLATFORM_CHOICES = [
-        ('instagram', 'Instagram'),
-        ('linkedin', 'LinkedIn'),
-        ('facebook', 'Facebook'),
-        ('youtube', 'YouTube'),
-        ('twitter', 'Twitter / X'),
-        ('tiktok', 'TikTok'),
-        ('website', 'Website'),
-    ]
+    class PlatformChoices(models.TextChoices):
+        INSTAGRAM = 'instagram', 'Instagram'
+        LINKEDIN = 'linkedin', 'LinkedIn'
+        FACEBOOK = 'facebook', 'Facebook'
+        YOUTUBE = 'youtube', 'YouTube'
+        TWITTER = 'twitter', 'Twitter / X'
+        TIKTOK = 'tiktok', 'TikTok'
+        WEBSITE = 'website', 'Website'
 
-    platform = models.CharField(max_length=20, choices=PLATFORM_CHOICES)
+    platform = models.CharField(max_length=20, choices=PlatformChoices.choices)
     url = models.URLField()
     display_label = models.CharField(
         max_length=10,
@@ -160,7 +163,7 @@ class SocialLink(models.Model):
     is_visible = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ['order']
+        ordering = ['order', 'platform']
         verbose_name = 'Social Link'
         verbose_name_plural = 'Social Links'
 
@@ -168,7 +171,7 @@ class SocialLink(models.Model):
         return f'{self.get_platform_display()} — {self.url}'
 
 
-class FAQ(models.Model):
+class FAQ(BaseModel):
     """Frequently asked questions shown on the Contact page."""
 
     question = models.CharField(max_length=500)
@@ -177,7 +180,7 @@ class FAQ(models.Model):
     is_visible = models.BooleanField(default=True)
 
     class Meta:
-        ordering = ['order']
+        ordering = ['order', 'question']
         verbose_name = 'FAQ'
         verbose_name_plural = 'FAQs'
 

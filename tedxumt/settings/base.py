@@ -34,15 +34,17 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     'rest_framework',
     'corsheaders',
+    'django_filters',
     'django_extensions',
 ]
 
 LOCAL_APPS = [
+    'apps.common',
     'apps.core',
     'apps.website',
     'apps.events',
-    'apps.team',
     'apps.speakers',
+    'apps.team',
     'apps.gallery',
     'apps.blog',
     'apps.sponsors',
@@ -88,6 +90,13 @@ DATABASES = {
     'default': env.db('DATABASE_URL', default='sqlite:///db.sqlite3')
 }
 
+# A relative sqlite path resolves against the current working directory, which
+# silently creates a second, empty database when the server is started from
+# anywhere but the project root. Anchor it to BASE_DIR instead.
+_default_db = DATABASES['default']
+if 'sqlite' in _default_db.get('ENGINE', '') and not Path(_default_db['NAME']).is_absolute():
+    _default_db['NAME'] = str(BASE_DIR / _default_db['NAME'])
+
 # ── Password Validation ────────────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -105,10 +114,15 @@ USE_TZ = True
 # ── Static Files ───────────────────────────────────────────────────────────
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [BASE_DIR / 'static'] if (BASE_DIR / 'static').exists() else []
 
 # ── Media Files ────────────────────────────────────────────────────────────
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / env('MEDIA_ROOT', default='media')
+
+# Reject uploads larger than 10 MB outright.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 # ── Default Primary Key ────────────────────────────────────────────────────
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -124,19 +138,32 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
         'rest_framework.parsers.FormParser',
     ],
+    # Public content is world-readable; writes require a staff session.
+    # Individual viewsets tighten this further (see apps/common/permissions.py).
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'apps.common.permissions.IsStaffOrReadOnly',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
     ],
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '100/hour',
+        'anon': '1000/hour',
+        'user': '5000/hour',
+        'submission': '10/hour',     # contact + application form POSTs
+        'newsletter': '20/hour',
     },
-    'DEFAULT_PAGINATION_CLASS': None,  # explicit per-viewset
+    'DEFAULT_PAGINATION_CLASS': 'apps.common.pagination.DefaultPagination',
+    'PAGE_SIZE': 20,
+    'EXCEPTION_HANDLER': 'apps.common.exceptions.api_exception_handler',
 }
 
 # ── CORS ───────────────────────────────────────────────────────────────────
@@ -145,3 +172,61 @@ CORS_ALLOWED_ORIGINS = env.list(
     default=['http://localhost:5173', 'http://127.0.0.1:5173'],
 )
 CORS_ALLOW_CREDENTIALS = False
+
+# The admin posts forms from its own origin, but a separately hosted frontend
+# needs to be trusted for any session-authenticated write.
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=CORS_ALLOWED_ORIGINS)
+
+# ── Logging ────────────────────────────────────────────────────────────────
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {name} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOG_DIR / 'tedxumt.log',
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 3,
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console', 'file'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'apps': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}

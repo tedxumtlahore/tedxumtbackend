@@ -1,34 +1,27 @@
 """
-Central API router — all /api/ endpoints assembled here.
+Central API router — every /api/ endpoint is assembled here.
+
+Each app owns its own `urls.py`; this module only decides mounting order.
+Apps are mounted flat under /api/ (no per-app prefix) because the public
+resource names are already globally unique.
 """
 
-from django.urls import path, include
+from django.urls import include, path
+
+from . import views
 
 urlpatterns = [
-    # Core: settings, navigation, hero, FAQs
+    path('', views.api_root_view, name='api-root'),
+    path('health/', views.health_view, name='api-health'),
+
+    path('', include('apps.common.urls')),
     path('', include('apps.core.urls')),
-
-    # Website: about page, messages
     path('', include('apps.website.urls')),
-
-    # Events
     path('', include('apps.events.urls')),
-
-    # Team
-    path('', include('apps.team.urls')),
-
-    # Speakers
     path('', include('apps.speakers.urls')),
-
-    # Gallery
+    path('', include('apps.team.urls')),
     path('', include('apps.gallery.urls')),
-
-    # Blog
     path('', include('apps.blog.urls')),
-
-    # Sponsors
     path('', include('apps.sponsors.urls')),
-
-    # Applications (forms)
     path('', include('apps.applications.urls')),
 ]

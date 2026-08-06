@@ -1,30 +1,30 @@
 """
-Website models — About page, Mission/Vision, Core Values, President/Organizer messages.
+Website models - About page, mission/vision, core values, and leadership messages.
 """
 
 from django.db import models
 
+from apps.common.models import BaseModel
 
-class AboutSection(models.Model):
+
+class AboutSection(BaseModel):
     """
     Each row represents one visual section on the About page.
     The section_key matches the hardcoded sections in About.jsx.
     """
 
-    SECTION_KEYS = [
-        ('what_is_ted', 'What is TED?'),
-        ('what_is_tedx', 'What is TEDx?'),
-        ('our_story', 'Our Story'),
-        ('mission', 'Our Mission'),
-        ('vision', 'Our Vision'),
-    ]
+    class SectionKeyChoices(models.TextChoices):
+        WHAT_IS_TED = 'what_is_ted', 'What is TED?'
+        WHAT_IS_TEDX = 'what_is_tedx', 'What is TEDx?'
+        OUR_STORY = 'our_story', 'Our Story'
+        MISSION = 'mission', 'Our Mission'
+        VISION = 'vision', 'Our Vision'
 
-    IMAGE_POSITION = [
-        ('left', 'Image on Left'),
-        ('right', 'Image on Right'),
-    ]
+    class ImagePositionChoices(models.TextChoices):
+        LEFT = 'left', 'Image on Left'
+        RIGHT = 'right', 'Image on Right'
 
-    section_key = models.CharField(max_length=30, choices=SECTION_KEYS, unique=True)
+    section_key = models.CharField(max_length=30, choices=SectionKeyChoices.choices, unique=True)
     eyebrow = models.CharField(max_length=100, blank=True)
     heading = models.CharField(max_length=300)
     body = models.TextField()
@@ -35,8 +35,8 @@ class AboutSection(models.Model):
     )
     image_position = models.CharField(
         max_length=10,
-        choices=IMAGE_POSITION,
-        default='right',
+        choices=ImagePositionChoices.choices,
+        default=ImagePositionChoices.RIGHT,
     )
     external_link_label = models.CharField(max_length=100, blank=True)
     external_link_url = models.URLField(blank=True)
@@ -44,7 +44,7 @@ class AboutSection(models.Model):
     order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
-        ordering = ['order']
+        ordering = ['order', 'section_key']
         verbose_name = 'About Section'
         verbose_name_plural = 'About Sections'
 
@@ -52,27 +52,26 @@ class AboutSection(models.Model):
         return self.get_section_key_display()
 
 
-class CoreValue(models.Model):
+class CoreValue(BaseModel):
     """Core values shown in the About page 'What We Stand For' grid."""
 
-    ICON_CHOICES = [
-        ('innovation', '⚡ Innovation'),
-        ('curiosity', '🔍 Curiosity'),
-        ('leadership', '★ Leadership'),
-        ('collaboration', '∞ Collaboration'),
-        ('creativity', '🎨 Creativity'),
-        ('impact', '🌐 Community Impact'),
-        ('mission', '◆ Mission'),
-        ('vision', '○ Vision'),
-    ]
+    class IconChoices(models.TextChoices):
+        INNOVATION = 'innovation', 'Innovation'
+        CURIOSITY = 'curiosity', 'Curiosity'
+        LEADERSHIP = 'leadership', 'Leadership'
+        COLLABORATION = 'collaboration', 'Collaboration'
+        CREATIVITY = 'creativity', 'Creativity'
+        IMPACT = 'impact', 'Community Impact'
+        MISSION = 'mission', 'Mission'
+        VISION = 'vision', 'Vision'
 
-    icon_key = models.CharField(max_length=20, choices=ICON_CHOICES)
+    icon_key = models.CharField(max_length=20, choices=IconChoices.choices)
     title = models.CharField(max_length=100)
     description = models.TextField()
     order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
-        ordering = ['order']
+        ordering = ['order', 'title']
         verbose_name = 'Core Value'
         verbose_name_plural = 'Core Values'
 
@@ -80,16 +79,15 @@ class CoreValue(models.Model):
         return self.title
 
 
-class Message(models.Model):
+class Message(BaseModel):
     """President or Organizer message — shown on About page."""
 
-    TYPE_CHOICES = [
-        ('president', 'President'),
-        ('organizer', 'Organizer'),
-        ('vice_president', 'Vice President'),
-    ]
+    class MessageTypeChoices(models.TextChoices):
+        PRESIDENT = 'president', 'President'
+        ORGANIZER = 'organizer', 'Organizer'
+        VICE_PRESIDENT = 'vice_president', 'Vice President'
 
-    message_type = models.CharField(max_length=20, choices=TYPE_CHOICES, unique=True)
+    message_type = models.CharField(max_length=20, choices=MessageTypeChoices.choices, unique=True)
     person_name = models.CharField(max_length=200)
     role_title = models.CharField(
         max_length=200,
@@ -105,7 +103,7 @@ class Message(models.Model):
     order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
-        ordering = ['order']
+        ordering = ['order', 'message_type']
         verbose_name = 'Message'
         verbose_name_plural = 'Messages (President / Organizer)'
 

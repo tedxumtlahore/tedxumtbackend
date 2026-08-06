@@ -1,10 +1,10 @@
 from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
 from . import views
 from .viewsets import SpeakerViewSet
 
-router = DefaultRouter()
+router = SimpleRouter()
 router.register('speakers', SpeakerViewSet, basename='speaker')
 
 urlpatterns = [

@@ -2,8 +2,8 @@
 Events models - venues, events, and event schedule items.
 """
 
+from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils.text import slugify
 
 from apps.common.models import BaseModel
 from apps.common.utils import generate_unique_slug
@@ -59,6 +59,11 @@ class Event(BaseModel):
         verbose_name = 'Event'
         verbose_name_plural = 'Events'
 
+    def clean(self):
+        super().clean()
+        if self.start_datetime and self.end_datetime and self.end_datetime <= self.start_datetime:
+            raise ValidationError({'end_datetime': 'The event must end after it starts.'})
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = generate_unique_slug(self, self.title)
@@ -86,6 +91,11 @@ class EventScheduleItem(BaseModel):
         ordering = ['event', 'start_time', 'title']
         verbose_name = 'Event Schedule Item'
         verbose_name_plural = 'Event Schedule Items'
+
+    def clean(self):
+        super().clean()
+        if self.start_time and self.end_time and self.end_time <= self.start_time:
+            raise ValidationError({'end_time': 'The session must end after it starts.'})
 
     def __str__(self):
         return f'{self.event.title} — {self.title}'

@@ -1,148 +1,149 @@
 # TEDxUMT Lahore CMS
 
-## Overview
+The content management system and REST API behind the TEDxUMT Lahore website.
 
-TEDxUMT Lahore CMS is the official content management system and REST API backend for the TEDxUMT Lahore website.
-
-This project provides a scalable, production-ready backend that powers the React frontend through Django REST Framework.
-
-The CMS allows administrators to manage website content without modifying any source code.
+Organizers edit everything — copy, events, speakers, team, gallery, blog,
+sponsors — through the Django admin. The React frontend reads it all over a
+versionless JSON API and posts form submissions back to it.
 
 ---
 
-# Objectives
+## Quick start
 
-- Build a modular Django backend
-- Provide REST APIs for the React frontend
-- Allow complete website management through Django Admin
-- Maintain clean architecture and professional coding standards
-- Be production-ready for deployment
+```bash
+python -m venv .venv
+```
+
+```bash
+.venv/Scripts/activate
+```
+
+```bash
+pip install -r requirements.txt
+```
+
+Create a `.env` from the template (`cp .env.example .env`) and set at minimum:
+
+```
+SECRET_KEY=<any long random string>
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1,testserver
+```
+
+Then set up the database and start the server:
+
+```bash
+python manage.py migrate
+```
+
+```bash
+python manage.py createsuperuser
+```
+
+```bash
+python manage.py seed_content
+```
+
+```bash
+python manage.py runserver
+```
+
+- Admin CMS — <http://127.0.0.1:8000/admin/>
+- API index — <http://127.0.0.1:8000/api/>
+- Health probe — <http://127.0.0.1:8000/api/health/>
+
+`seed_content` is idempotent, so it is safe to re-run. It populates the launch
+content set and imports the prototype's photos into the gallery. Use
+`--flush` to wipe seeded content first, or `--media-dir <path>` to import gallery
+photos from somewhere other than `../frontend/src/images`.
 
 ---
 
-# Tech Stack
+## Tests
 
-## Backend
+```bash
+python manage.py test
+```
 
-- Python 3.13+
-- Django 5+
-- Django REST Framework
-- Pillow
-- django-environ
-- django-cors-headers
-
-## Frontend
-
-- React
-- Axios
-
-## Database
-
-- SQLite (Development)
-- PostgreSQL (Production)
-
-## Deployment
-
-- Render
-- PostgreSQL
-- Cloudinary / Supabase Storage (Future)
+120 tests covering models, serializers, permissions, validation, throttling,
+and the full HTTP surface of every endpoint.
 
 ---
 
-# Project Structure
-
-tedxumt_backend/
+## Architecture
 
 ```
 apps/
-    common/
-    core/
-    website/
-    events/
-    speakers/
-    team/
-    gallery/
-    blog/
-    sponsors/
-    applications/
+  common/        BaseModel, validators, permissions, pagination,
+                 shared viewset mixins, unified API error handler
+  core/          WebsiteSettings, HeroSection, Navigation, SocialLink, FAQ
+  website/       AboutSection, CoreValue, Message
+  events/        Venue, Event, EventScheduleItem
+  speakers/      Speaker
+  team/          Department, TeamMember
+  gallery/       GalleryAlbum, GalleryImage
+  blog/          Category, Tag, BlogPost
+  sponsors/      SponsorTier, Sponsor
+  applications/  ContactMessage, NewsletterSubscriber,
+                 Speaker/Volunteer/Partner applications
 
 tedxumt/
-    settings/
-        base.py
-        development.py
-        production.py
-
-media/
-static/
-requirements.txt
-manage.py
+  settings/      base.py, development.py, production.py
+  api_router.py  mounts every app's urls.py under /api/
+  views.py       API index + health probe
 ```
 
----
+Each app follows the same layout: `models.py`, `admin.py`, `serializers.py`,
+`viewsets.py` (routed collections), `views.py` (flat page-shaped endpoints),
+`urls.py`, `tests.py`.
 
-# Features
+### Conventions worth knowing
 
-- Website Settings
-- Dynamic Hero Section
-- Dynamic Navigation
-- About Page CMS
-- President Message
-- Events Management
-- Speakers Management
-- Team Management
-- Gallery Management
-- Sponsors Management
-- Blog System
-- Contact Forms
-- Newsletter
-- Volunteer Applications
-- Speaker Applications
-- Partner Applications
-- REST API
-- Django Admin CMS
+- **`BaseModel`** gives every content model `created_at`, `updated_at`, and
+  `is_active`. Most also carry `is_visible` — `is_active` is a soft delete,
+  `is_visible` is an editor's on/off switch.
+- **Slugs** are generated from the title/name, are unique, and are not editable.
+  They are the public lookup key for events, speakers, posts, and albums.
+- **Page-shaped endpoints** (`/api/site-config/`, `/api/about/`, `/api/team/`,
+  `/api/gallery/`, `/api/blog/`, `/api/sponsors/`) return everything one page
+  needs in a single unpaginated request. The routed collections underneath them
+  are for the CMS and for filtered queries.
+- **Writes require a staff session.** Reads are public. Submission endpoints
+  invert this: anyone can POST, only staff can read.
+
+See [API_DOCUMENTATION.md](API_DOCUMENTATION.md) for the full endpoint reference.
 
 ---
 
-# Development Workflow
+## Deployment
 
-Every feature follows this workflow.
+1. Set `DJANGO_SETTINGS_MODULE=tedxumt.settings.production`.
+2. Fill in `.env` from `.env.example` — a real `SECRET_KEY`, `DEBUG=False`,
+   `ALLOWED_HOSTS`, `DATABASE_URL`, and `CORS_ALLOWED_ORIGINS` pointing at the
+   deployed frontend.
+3. Uncomment the production extras in `requirements.txt` (gunicorn,
+   psycopg2-binary, whitenoise) and install.
+4. `python manage.py migrate && python manage.py collectstatic --noinput`
+5. Serve with `gunicorn tedxumt.wsgi:application`.
 
-1. Design
-2. Models
-3. Admin
-4. Serializers
-5. ViewSets
-6. URLs
-7. Validation
-8. Testing
-9. Documentation
-10. Git Commit
+Production settings enable HSTS, secure cookies, SSL redirect, and
+`SECURE_PROXY_SSL_HEADER` for a TLS-terminating proxy; they disable the
+browsable API and mail unhandled errors to `ADMIN_EMAIL`. WhiteNoise is wired up
+automatically if it is installed.
 
----
-
-# Documentation
-
-This repository contains:
-
-- README.md
-- BACKEND_GUIDE.md
-- DATABASE_SCHEMA.md
-- API_DOCUMENTATION.md
-- DEPLOYMENT.md
-- TODO.md
+`MEDIA_ROOT` is local disk by default. For a platform with an ephemeral
+filesystem, move uploads to object storage (`django-storages`) before launch —
+otherwise every deploy discards uploaded images.
 
 ---
 
-# Current Status
+## Tech stack
 
-Project is currently under active development.
-
-The backend is being developed incrementally, app by app, following the architecture defined in BACKEND_GUIDE.md.
+Django 5.2 · Django REST Framework · django-filter · django-cors-headers ·
+django-environ · Pillow · SQLite (dev) / PostgreSQL (prod)
 
 ---
 
-# License
+## License
 
-This project is developed for TEDxUMT Lahore.
-
-All TED and TEDx branding remains the property of TED.
+Developed for TEDxUMT Lahore. All TED and TEDx branding remains the property of TED.

@@ -1,15 +1,18 @@
 # TEDxUMT Backend Development Roadmap
 
+Status: **all phases complete.** 120 backend tests passing; frontend builds clean
+and every route is wired to the API.
+
 ## Phase 0 — Foundation
 
-- [ ] Configure virtual environment
-- [ ] Install dependencies
-- [ ] Configure environment variables
-- [ ] Configure CORS
-- [ ] Configure Media
-- [ ] Configure Static files
-- [ ] Verify Django settings
-- [ ] Initial Git commit
+- [x] Configure virtual environment
+- [x] Install dependencies
+- [x] Configure environment variables
+- [x] Configure CORS
+- [x] Configure Media
+- [x] Configure Static files
+- [x] Verify Django settings
+- [x] Initial Git commit
 
 ---
 
@@ -23,6 +26,9 @@
 - [x] Validators
 - [x] Utilities
 - [x] Tests
+
+Added since: shared permissions, pagination, viewset mixins, and a unified API
+exception handler.
 
 ---
 
@@ -38,7 +44,7 @@
 - [x] Serializers
 - [x] ViewSets
 - [x] URLs
-- [ ] Migrations
+- [x] Migrations
 - [x] Tests
 
 ---
@@ -85,109 +91,127 @@
 
 # Phase 6 — Team
 
-- [ ] Department
-- [ ] TeamMember
+- [x] Department
+- [x] TeamMember
 
-- [ ] Admin
-- [ ] Serializers
-- [ ] ViewSets
-- [ ] URLs
-- [ ] Tests
+- [x] Admin
+- [x] Serializers
+- [x] ViewSets
+- [x] URLs
+- [x] Tests
 
 ---
 
 # Phase 7 — Gallery
 
-- [ ] GalleryAlbum
-- [ ] GalleryImage
+- [x] GalleryAlbum
+- [x] GalleryImage
 
-- [ ] Admin
-- [ ] Serializers
-- [ ] ViewSets
-- [ ] URLs
-- [ ] Tests
+- [x] Admin
+- [x] Serializers
+- [x] ViewSets
+- [x] URLs
+- [x] Tests
 
 ---
 
 # Phase 8 — Blog
 
-- [ ] Category
-- [ ] Tag
-- [ ] BlogPost
+- [x] Category
+- [x] Tag
+- [x] BlogPost
 
-- [ ] Admin
-- [ ] Serializers
-- [ ] ViewSets
-- [ ] URLs
-- [ ] Tests
+- [x] Admin
+- [x] Serializers
+- [x] ViewSets
+- [x] URLs
+- [x] Tests
 
 ---
 
 # Phase 9 — Sponsors
 
-- [ ] SponsorTier
-- [ ] Sponsor
+- [x] SponsorTier
+- [x] Sponsor
 
-- [ ] Admin
-- [ ] Serializers
-- [ ] ViewSets
-- [ ] URLs
-- [ ] Tests
+- [x] Admin
+- [x] Serializers
+- [x] ViewSets
+- [x] URLs
+- [x] Tests
 
 ---
 
 # Phase 10 — Applications
 
-- [ ] ContactMessage
-- [ ] NewsletterSubscriber
-- [ ] SpeakerApplication
-- [ ] VolunteerApplication
-- [ ] PartnerApplication
+- [x] ContactMessage
+- [x] NewsletterSubscriber
+- [x] SpeakerApplication
+- [x] VolunteerApplication
+- [x] PartnerApplication
 
-- [ ] Validation
-- [ ] APIs
-- [ ] Tests
+- [x] Validation
+- [x] APIs
+- [x] Tests
 
 ---
 
 # Phase 11 — Frontend Integration
 
-- [ ] Axios configuration
-- [ ] API service layer
-- [ ] Events integration
-- [ ] Speakers integration
-- [ ] Team integration
-- [ ] Blog integration
-- [ ] Gallery integration
-- [ ] Sponsors integration
-- [ ] Contact API
-- [ ] Newsletter API
+- [x] Axios configuration
+- [x] API service layer
+- [x] Events integration
+- [x] Speakers integration
+- [x] Team integration
+- [x] Blog integration
+- [x] Gallery integration
+- [x] Sponsors integration
+- [x] Contact API
+- [x] Newsletter API
+
+Also: About, Home, Sponsors, and the Apply page's three application tracks.
+`src/data/siteData.js` is no longer imported anywhere.
 
 ---
 
 # Phase 12 — Production
 
-- [ ] Authentication
-- [ ] Permissions
-- [ ] Pagination
-- [ ] Filtering
-- [ ] Search
-- [ ] Logging
-- [ ] Error handling
-- [ ] Documentation
-- [ ] Deployment
-- [ ] Final testing
+- [x] Authentication (session auth; admin is the CMS entry point)
+- [x] Permissions (`IsStaffOrReadOnly`, `CreateOnlyOrStaff`)
+- [x] Pagination (default 20, `?page_size=` up to 100)
+- [x] Filtering (django-filter + per-endpoint query params)
+- [x] Search (`?search=` on all collections)
+- [x] Logging (rotating file + console; errors mailed to admins in production)
+- [x] Error handling (single JSON error shape across the whole API)
+- [x] Documentation (README, API_DOCUMENTATION.md, frontend README)
+- [x] Deployment (production settings, WhiteNoise, proxy SSL header)
+- [x] Final testing
 
 ---
 
 # Final Checklist
 
-- [ ] All models complete
-- [ ] Admin fully functional
-- [ ] APIs documented
-- [ ] Frontend connected
-- [ ] Database migrated
-- [ ] Production deployment successful
-- [ ] README updated
-- [ ] Documentation complete
-- [ ] Version 1.0 Released
+- [x] All models complete
+- [x] Admin fully functional
+- [x] APIs documented
+- [x] Frontend connected
+- [x] Database migrated
+- [x] Production deployment configured (not yet executed)
+- [x] README updated
+- [x] Documentation complete
+- [x] Version 1.0 ready
+
+---
+
+# Known gaps before going live
+
+1. **Media storage.** Uploads go to local disk. On a platform with an ephemeral
+   filesystem (Render, Heroku), every deploy discards them — move to object
+   storage via `django-storages` first.
+2. **Large bundled images.** `TED.png` (1.9 MB) and `UMT Campus 2.jpeg` (5 MB)
+   ship in the frontend bundle. Compress or move them into the CMS.
+3. **`Speaker.event` is required.** A speaker cannot be created before their
+   event exists. Intentional, but worth revisiting if speakers are ever announced
+   before an event is scheduled.
+4. **No caching layer.** Fine at current traffic; add per-view caching on the
+   page-shaped endpoints if load becomes a concern.

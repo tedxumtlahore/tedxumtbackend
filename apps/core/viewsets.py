@@ -1,19 +1,31 @@
 from rest_framework import viewsets
 from rest_framework.response import Response
 
-from .models import WebsiteSettings, HeroSection, NavigationItem, SocialLink, FAQ
+from apps.common.mixins import SerializerContextMixin, VisibleQuerysetMixin
+from apps.common.permissions import IsStaffOrReadOnly
+
+from .models import FAQ, HeroSection, NavigationItem, SocialLink, WebsiteSettings
 from .serializers import (
-    WebsiteSettingsSerializer,
+    FAQSerializer,
     HeroSectionSerializer,
     NavigationItemSerializer,
     SocialLinkSerializer,
-    FAQSerializer,
+    WebsiteSettingsSerializer,
 )
 
 
-class SingletonViewSet(viewsets.ModelViewSet):
+class SingletonViewSet(SerializerContextMixin, viewsets.ModelViewSet):
+    """
+    Exposes a one-row model at a single URL.
+
+    Both /<resource>/ and /<resource>/1/ return the same object, so the
+    frontend never has to know the row exists before reading it.
+    """
+
     serializer_class = None
     model = None
+    permission_classes = [IsStaffOrReadOnly]
+    pagination_class = None
 
     http_method_names = ['get', 'put', 'patch', 'head', 'options']
 
@@ -22,13 +34,6 @@ class SingletonViewSet(viewsets.ModelViewSet):
 
     def get_object(self):
         return self.model.load()
-
-    def get_serializer_context(self):
-        return {'request': self.request}
-
-    def get_serializer(self, *args, **kwargs):
-        kwargs.setdefault('context', self.get_serializer_context())
-        return self.serializer_class(*args, **kwargs)
 
     def retrieve(self, request, *args, **kwargs):
         serializer = self.get_serializer(self.get_object())
@@ -39,17 +44,14 @@ class SingletonViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=False)
+        serializer = self.get_serializer(instance, data=request.data, partial=kwargs.pop('partial', False))
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
 
     def partial_update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
 
 class WebsiteSettingsViewSet(SingletonViewSet):
@@ -62,21 +64,28 @@ class HeroSectionViewSet(SingletonViewSet):
     model = HeroSection
 
 
-class VisibleContentViewSet(viewsets.ReadOnlyModelViewSet):
-    def get_queryset(self):
-        return self.queryset.filter(is_visible=True)
+class VisibleContentViewSet(SerializerContextMixin, VisibleQuerysetMixin, viewsets.ModelViewSet):
+    permission_classes = [IsStaffOrReadOnly]
+    pagination_class = None  # these lists are short and always rendered whole
 
 
 class NavigationItemViewSet(VisibleContentViewSet):
     queryset = NavigationItem.objects.all()
     serializer_class = NavigationItemSerializer
+    search_fields = ['label', 'url']
+    ordering_fields = ['order', 'label']
 
 
 class SocialLinkViewSet(VisibleContentViewSet):
     queryset = SocialLink.objects.all()
     serializer_class = SocialLinkSerializer
+    filterset_fields = ['platform']
+    search_fields = ['display_label', 'url', 'aria_label']
+    ordering_fields = ['order', 'platform']
 
 
 class FAQViewSet(VisibleContentViewSet):
     queryset = FAQ.objects.all()
     serializer_class = FAQSerializer
+    search_fields = ['question', 'answer']
+    ordering_fields = ['order', 'question']

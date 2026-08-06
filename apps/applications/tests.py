@@ -1,7 +1,8 @@
-from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
+
+from apps.common.testing import login_as_staff
 
 from .models import (
     ContactMessage,
@@ -94,8 +95,7 @@ class ContactAPITests(APITestCase):
         ContactMessage.objects.create(
             name='Ali', email='ali@example.com', subject='Hi', message='Hello there'
         )
-        get_user_model().objects.create_superuser('admin1', 'a@example.com', 'pw-strong-123')
-        self.client.login(username='admin1', password='pw-strong-123')
+        login_as_staff(self.client, 'admin1')
 
         response = self.client.get('/api/contact-messages/')
 
@@ -244,8 +244,7 @@ class SubmissionThrottleTests(APITestCase):
         self.assertEqual(self.client.post(reverse('api-contact'), payload, format='json').status_code, 429)
 
     def test_staff_are_exempt_from_the_submission_throttle(self):
-        get_user_model().objects.create_superuser('admin2', 'a2@example.com', 'pw-strong-123')
-        self.client.login(username='admin2', password='pw-strong-123')
+        login_as_staff(self.client, 'admin2')
         payload = {
             'name': 'Ali Raza', 'email': 'ali@example.com', 'subject': 'Hello',
             'message': 'A perfectly long enough message body.',

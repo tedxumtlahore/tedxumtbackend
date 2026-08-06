@@ -1,10 +1,11 @@
 from datetime import datetime, time, timezone
 
-from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import SimpleTestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
+
+from apps.common.testing import login_as_staff
 
 from .models import Venue, Event, EventScheduleItem
 from .serializers import VenueSerializer, EventListSerializer, EventDetailSerializer, EventScheduleItemSerializer
@@ -229,8 +230,7 @@ class EventAPITests(APITestCase):
         self.assertTrue(Event.objects.filter(pk=self.upcoming.pk).exists())
 
     def test_staff_can_create_events(self):
-        get_user_model().objects.create_superuser('organizer', 'o@example.com', 'pw-strong-123')
-        self.client.login(username='organizer', password='pw-strong-123')
+        login_as_staff(self.client, 'organizer')
 
         response = self.client.post('/api/events/', {
             'title': 'Convergence 2025', 'short_description': 'x', 'description': 'x',
@@ -242,8 +242,7 @@ class EventAPITests(APITestCase):
         self.assertEqual(Event.objects.get(title='Convergence 2025').slug, 'convergence-2025')
 
     def test_api_rejects_an_end_before_its_start(self):
-        get_user_model().objects.create_superuser('organizer2', 'o2@example.com', 'pw-strong-123')
-        self.client.login(username='organizer2', password='pw-strong-123')
+        login_as_staff(self.client, 'organizer2')
 
         response = self.client.post('/api/events/', {
             'title': 'Backwards', 'short_description': 'x', 'description': 'x',

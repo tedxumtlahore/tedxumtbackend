@@ -187,6 +187,93 @@ class EventAPITests(APITestCase):
 
         self.assertEqual([e['title'] for e in response.data['results']], ['Genesis 2024'])
 
+    def test_next_event_returns_a_published_event_in_full(self):
+        response = self.client.get(reverse('api-next-event'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['state'], 'published')
+        self.assertEqual(response.data['event']['title'], 'Resonance 2026')
+
+    def test_next_event_hides_a_draft_behind_coming_soon(self):
+        self.upcoming.status = Event.StatusChoices.DRAFT
+        self.upcoming.save()
+
+        response = self.client.get(reverse('api-next-event'))
+
+        self.assertEqual(response.data['state'], 'coming_soon')
+        self.assertIsNone(response.data['event'])
+
+    def test_coming_soon_response_leaks_no_draft_details(self):
+        """Blur is CSS. The payload itself must not carry the details."""
+        self.upcoming.status = Event.StatusChoices.DRAFT
+        self.upcoming.save()
+
+        body = self.client.get(reverse('api-next-event')).content.decode()
+
+        for secret in ('Resonance', 'Flagship', 'UMT Auditorium', '2026-11-14'):
+            self.assertNotIn(secret, body)
+
+    def test_next_event_reports_none_when_nothing_is_upcoming(self):
+        Event.objects.all().delete()
+
+        response = self.client.get(reverse('api-next-event'))
+
+        self.assertEqual(response.data['state'], 'none')
+        self.assertIsNone(response.data['event'])
+
+    def test_next_event_ignores_cancelled_events(self):
+        self.upcoming.status = Event.StatusChoices.CANCELLED
+        self.upcoming.save()
+        self.draft.delete()
+
+        response = self.client.get(reverse('api-next-event'))
+
+        self.assertEqual(response.data['state'], 'none')
+
+    def test_a_past_dated_draft_still_shows_coming_soon(self):
+        """A draft's date is provisional, so it must not gate the teaser."""
+        Event.objects.all().delete()
+        Event.objects.create(
+            title='Undated Plans', short_description='x', description='x', venue=self.venue,
+            start_datetime=datetime(2020, 1, 1, 10, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2020, 1, 1, 17, 0, tzinfo=timezone.utc),
+            event_type=Event.EventTypeChoices.TALKS, status=Event.StatusChoices.DRAFT,
+        )
+
+        response = self.client.get(reverse('api-next-event'))
+
+        self.assertEqual(response.data['state'], 'coming_soon')
+
+    def test_a_deactivated_draft_clears_the_teaser(self):
+        Event.objects.all().delete()
+        Event.objects.create(
+            title='Abandoned', short_description='x', description='x', venue=self.venue,
+            start_datetime=datetime(2027, 1, 1, 10, 0, tzinfo=timezone.utc),
+            end_datetime=datetime(2027, 1, 1, 17, 0, tzinfo=timezone.utc),
+            event_type=Event.EventTypeChoices.TALKS, status=Event.StatusChoices.DRAFT,
+            is_active=False,
+        )
+
+        response = self.client.get(reverse('api-next-event'))
+
+        self.assertEqual(response.data['state'], 'none')
+
+    def test_a_published_event_outranks_a_draft(self):
+        response = self.client.get(reverse('api-next-event'))
+
+        self.assertEqual(response.data['state'], 'published')
+        self.assertEqual(response.data['event']['title'], 'Resonance 2026')
+
+    def test_staff_see_the_same_coming_soon_state(self):
+        """The teaser is a public-facing state, not a permission check."""
+        self.upcoming.status = Event.StatusChoices.DRAFT
+        self.upcoming.save()
+        login_as_staff(self.client, 'organizer3')
+
+        response = self.client.get(reverse('api-next-event'))
+
+        self.assertEqual(response.data['state'], 'coming_soon')
+
     def test_options_endpoint_lists_choices(self):
         response = self.client.get('/api/events/options/')
 

@@ -11,5 +11,6 @@ router.register('event-schedule-items', EventScheduleItemViewSet, basename='even
 
 urlpatterns = [
     path('events/featured/', views.featured_events_view, name='api-featured-events'),
+    path('events/next/', views.next_event_view, name='api-next-event'),
     path('', include(router.urls)),
 ]

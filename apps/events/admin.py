@@ -8,7 +8,7 @@ from .models import Venue, Event, EventScheduleItem
 class VenueAdmin(admin.ModelAdmin):
     list_display = ['name', 'city', 'updated_at']
     search_fields = ['name', 'address', 'city']
-    list_filter = ['city']
+    list_filter = ['city', 'is_active']
     ordering = ['name']
     readonly_fields = ['created_at', 'updated_at']
 
@@ -19,7 +19,8 @@ class EventAdmin(admin.ModelAdmin):
     list_editable = ['status', 'is_featured']
     list_display_links = ['title']
     search_fields = ['title', 'slug', 'short_description', 'description', 'venue__name', 'venue__city']
-    list_filter = ['event_type', 'status', 'is_featured', 'venue']
+    list_filter = ['event_type', 'status', 'is_featured', 'venue', 'is_active']
+    list_select_related = ['venue']
     ordering = ['-start_datetime', 'title']
     readonly_fields = ['slug', 'featured_image_preview', 'banner_image_preview', 'created_at', 'updated_at']
 
@@ -57,6 +58,7 @@ class EventAdmin(admin.ModelAdmin):
 class EventScheduleItemAdmin(admin.ModelAdmin):
     list_display = ['event', 'title', 'speaker', 'start_time', 'end_time', 'updated_at']
     search_fields = ['title', 'description', 'event__title', 'speaker__name']
-    list_filter = ['event']
+    list_filter = ['event', 'speaker', 'is_active']
+    list_select_related = ['event', 'speaker']
     ordering = ['event', 'start_time', 'title']
     readonly_fields = ['created_at', 'updated_at']

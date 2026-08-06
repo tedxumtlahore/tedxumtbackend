@@ -11,6 +11,6 @@ from .serializers import SpeakerListSerializer
 
 @api_view(['GET'])
 def featured_speakers_view(request):
-    featured_speakers = Speaker.objects.filter(is_active=True, featured=True)
+    featured_speakers = Speaker.objects.select_related('event').filter(is_active=True, featured=True)
     serializer = SpeakerListSerializer(featured_speakers, many=True, context={'request': request})
     return Response(serializer.data)

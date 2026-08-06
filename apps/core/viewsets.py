@@ -1,4 +1,4 @@
-from rest_framework import mixins, viewsets
+from rest_framework import viewsets
 from rest_framework.response import Response
 
 from .models import WebsiteSettings, HeroSection, NavigationItem, SocialLink, FAQ
@@ -11,9 +11,14 @@ from .serializers import (
 )
 
 
-class SingletonViewSet(viewsets.ViewSet):
+class SingletonViewSet(viewsets.ModelViewSet):
     serializer_class = None
     model = None
+
+    http_method_names = ['get', 'put', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        return self.model.objects.all()
 
     def get_object(self):
         return self.model.load()
@@ -57,7 +62,7 @@ class HeroSectionViewSet(SingletonViewSet):
     model = HeroSection
 
 
-class VisibleContentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+class VisibleContentViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         return self.queryset.filter(is_visible=True)
 

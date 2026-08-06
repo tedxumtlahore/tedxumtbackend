@@ -34,7 +34,7 @@ def hero_view(request):
 @api_view(['GET'])
 def navigation_view(request):
     """GET /api/navigation/ — ordered, visible nav items."""
-    items = NavigationItem.objects.filter(is_visible=True)
+    items = NavigationItem.objects.filter(is_visible=True).order_by('order', 'label')
     serializer = NavigationItemSerializer(items, many=True)
     return Response(serializer.data)
 
@@ -42,7 +42,7 @@ def navigation_view(request):
 @api_view(['GET'])
 def social_links_view(request):
     """GET /api/social-links/ — visible social links."""
-    links = SocialLink.objects.filter(is_visible=True)
+    links = SocialLink.objects.filter(is_visible=True).order_by('order', 'platform')
     serializer = SocialLinkSerializer(links, many=True)
     return Response(serializer.data)
 
@@ -50,6 +50,6 @@ def social_links_view(request):
 @api_view(['GET'])
 def faq_view(request):
     """GET /api/faqs/ — visible FAQs in order."""
-    faqs = FAQ.objects.filter(is_visible=True)
+    faqs = FAQ.objects.filter(is_visible=True).order_by('order', 'question')
     serializer = FAQSerializer(faqs, many=True)
     return Response(serializer.data)

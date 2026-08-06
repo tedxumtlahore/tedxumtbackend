@@ -9,7 +9,7 @@ class SpeakerViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
 
     def get_queryset(self):
-        return self.queryset.filter(is_active=True)
+        return self.queryset.filter(is_active=True).select_related('event')
 
     def get_serializer_class(self):
         if self.action == 'retrieve':

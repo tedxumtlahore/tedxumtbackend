@@ -11,6 +11,6 @@ from .serializers import EventListSerializer
 
 @api_view(['GET'])
 def featured_events_view(request):
-    featured_events = Event.objects.filter(is_active=True, is_featured=True)
+    featured_events = Event.objects.select_related('venue').filter(is_active=True, is_featured=True)
     serializer = EventListSerializer(featured_events, many=True, context={'request': request})
     return Response(serializer.data)

@@ -43,7 +43,7 @@ class CoreValueAdmin(admin.ModelAdmin):
     list_editable = ['order']
     list_display_links = ['title']
     search_fields = ['title', 'description', 'icon_key']
-    list_filter = ['icon_key']
+    list_filter = ['icon_key', 'is_active']
     ordering = ['order', 'title']
     readonly_fields = ['created_at', 'updated_at']
 
@@ -54,7 +54,7 @@ class MessageAdmin(admin.ModelAdmin):
     list_editable = ['order', 'is_visible']
     list_display_links = ['person_name']
     search_fields = ['person_name', 'role_title', 'message_body']
-    list_filter = ['message_type', 'is_visible']
+    list_filter = ['message_type', 'is_visible', 'is_active']
     ordering = ['order', 'message_type']
     readonly_fields = ['photo_preview', 'created_at', 'updated_at']
 

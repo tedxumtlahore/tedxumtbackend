@@ -10,7 +10,8 @@ class SpeakerAdmin(admin.ModelAdmin):
     list_editable = ['featured']
     list_display_links = ['name']
     search_fields = ['name', 'designation', 'organization', 'talk_title', 'bio', 'event__title']
-    list_filter = ['featured', 'event']
+    list_filter = ['featured', 'event', 'is_active']
+    list_select_related = ['event']
     ordering = ['-featured', 'name']
     readonly_fields = ['slug', 'profile_image_preview', 'created_at', 'updated_at']
 

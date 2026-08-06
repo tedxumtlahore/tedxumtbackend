@@ -2,7 +2,7 @@
 Website views - combined About page payload and CRUD-friendly APIs.
 """
 
-from rest_framework import mixins, viewsets
+from rest_framework import viewsets
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -10,7 +10,7 @@ from .models import AboutSection, CoreValue, Message
 from .serializers import AboutSectionSerializer, CoreValueSerializer, MessageSerializer
 
 
-class VisibleModelViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+class VisibleModelViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = self.queryset
         if hasattr(queryset.model, 'is_visible'):
@@ -23,7 +23,7 @@ class AboutSectionViewSet(VisibleModelViewSet):
     serializer_class = AboutSectionSerializer
 
 
-class CoreValueViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+class CoreValueViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CoreValue.objects.all()
     serializer_class = CoreValueSerializer
 

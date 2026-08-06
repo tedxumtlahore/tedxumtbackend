@@ -1,3 +1,4 @@
+from django.db.models import Count, Prefetch, Q
 from rest_framework import viewsets
 
 from .models import Venue, Event, EventScheduleItem
@@ -24,6 +25,16 @@ class EventViewSet(ActiveQuerysetMixin, viewsets.ModelViewSet):
     queryset = Event.objects.select_related('venue').all()
     serializer_class = EventListSerializer
     lookup_field = 'slug'
+
+    def get_queryset(self):
+        schedule_items = EventScheduleItem.objects.select_related('speaker')
+        return (
+            self.queryset
+            .filter(is_active=True)
+            .select_related('venue')
+            .prefetch_related(Prefetch('schedule_items', queryset=schedule_items))
+            .annotate(speaker_count=Count('schedule_items', filter=Q(schedule_items__speaker__isnull=False), distinct=True))
+        )
 
     def get_serializer_class(self):
         if self.action == 'retrieve':

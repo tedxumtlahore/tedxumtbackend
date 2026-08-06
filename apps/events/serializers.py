@@ -3,6 +3,7 @@ Events serializers - venues, events, and schedule items.
 """
 
 from rest_framework import serializers
+from django.db.models import Count, Q
 
 from apps.common.utils import get_file_url
 
@@ -57,6 +58,9 @@ class EventListSerializer(serializers.ModelSerializer):
         return get_file_url(request, obj.banner_image)
 
     def get_speaker_count(self, obj):
+        annotated_count = getattr(obj, 'speaker_count', None)
+        if annotated_count is not None:
+            return annotated_count
         if not obj.pk:
             return 0
         return obj.schedule_items.filter(speaker__isnull=False).count()

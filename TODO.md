@@ -1,7 +1,10 @@
 # TEDxUMT Backend Development Roadmap
 
-Status: **CMS complete; ticketing Stages 1-2 complete.** 215 backend tests
+Status: **CMS complete; ticketing Stages 1-3 complete.** 215 backend tests
 passing; frontend builds clean and every route is wired to the API.
+
+Scale: the event sells roughly **100 tickets**. That retires several concerns
+below — see the notes against each.
 
 ## Phase 0 — Foundation
 
@@ -246,11 +249,25 @@ Notes:
 - **Delivery is synchronous** — there is no queue. Fine for one event's volume;
   move behind Celery before a large on-sale.
 
-## Stage 3 — attendee & volunteer frontend
+## Stage 3 — attendee & volunteer frontend ✅
 
-- [ ] Registration form on the event page
-- [ ] Ticket page with QR and PDF download
-- [ ] Volunteer scanner (camera QR, retries queued scans)
+- [x] Registration form at `/events/<slug>/register`, linked from the event page
+- [x] Ticket page at `/ticket/<access_token>` with QR and PDF download
+- [x] Volunteer scanner at `/checkin` (and `/checkin/<token>` from a scanned QR)
+- [x] JWT sign-in with shared-refresh handling
+
+PRD edge cases handled in the UI:
+
+- **Camera permission denied** — a manual entry box is always present, and the
+  denial is explained rather than leaving a dead black rectangle.
+- **Volunteer loses internet** — scans queue in `localStorage` and replay on
+  reconnect. A refused ticket is a resolved outcome and is dropped rather than
+  retried forever.
+- **Repeated decodes** — the camera fires continuously, so the same code is
+  ignored for 3 seconds after a scan.
+- **A refused scan still shows the attendee.** The 409 carries the name and
+  ticket number, which is exactly what a volunteer needs to explain a refusal
+  to the person in front of them.
 
 ## Stage 4 — organizer dashboard
 
@@ -272,12 +289,16 @@ Notes:
    page-shaped endpoints if load becomes a concern.
 5. **Throttling is per-process.** DRF counts against Django's default
    `LocMemCache`, so under gunicorn the registration limit multiplies by worker
-   count and resets on restart. Ticketing makes this matter — point `CACHES` at
-   Redis before opening registration.
-6. **`select_for_update` is a no-op on SQLite.** The oversell guard currently
-   leans on SQLite's database-wide write lock. Verify the capacity and check-in
-   concurrency tests against PostgreSQL before a real event.
-7. **Seeded content is fictional.** The speakers and sponsors from
+   count. *At ~100 tickets a single worker is ample, so this is not a launch
+   blocker* — it becomes one only if the site is scaled out.
+6. **`select_for_update` is a no-op on SQLite.** The oversell guard leans on
+   SQLite's database-wide write lock instead. *At this scale SQLite is genuinely
+   adequate*, and the write lock does serialise the capacity check. Worth
+   re-verifying on PostgreSQL only if the event grows or registration opens with
+   a rush on the last few seats.
+7. **No task queue.** Email is synchronous. *At ~100 tickets spread over days
+   this is a non-issue*; Celery only matters for a large simultaneous on-sale.
+8. **Seeded content is fictional.** The speakers and sponsors from
    `seed_content` are placeholders carried over from the prototype. Replace or
    clear them before the site is public — publishing invented sponsors implies
    relationships that do not exist.

@@ -21,6 +21,8 @@ full attendee list. Staff can still search by number through the admin.
 
 import logging
 
+from django.conf import settings
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
@@ -38,7 +40,8 @@ from .serializers import (
     RegistrationSerializer,
     TicketSerializer,
 )
-from .services import TicketingError, check_in, inspect_ticket, register
+from .rendering import qr_png, ticket_pdf
+from .services import TicketingError, check_in, deliver_ticket, inspect_ticket, register
 from .throttling import CheckInRateThrottle, RegistrationRateThrottle
 
 logger = logging.getLogger('apps.ticketing')
@@ -133,6 +136,79 @@ def ticket_by_token_view(request, access_token):
         access_token=access_token,
     )
     return Response(TicketSerializer(ticket, context={'request': request}).data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def ticket_qr_view(request, access_token):
+    """
+    GET /api/tickets/by-token/{access_token}/qr.png — the ticket's QR image.
+
+    Rendered on demand rather than stored: the deploy target has an ephemeral
+    filesystem, so a saved PNG would disappear and leave an attendee at the door
+    with a broken image.
+    """
+    ticket = get_object_or_404(Ticket.objects.select_related('registration'), access_token=access_token)
+    payload = request.build_absolute_uri(f'/checkin/{ticket.qr_token}')
+    response = HttpResponse(qr_png(payload), content_type='image/png')
+    # Private: this image is the ticket. Shared caches must not keep a copy.
+    response['Cache-Control'] = 'private, max-age=300'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def ticket_pdf_view(request, access_token):
+    """GET /api/tickets/by-token/{access_token}/pdf/ — the printable ticket."""
+    ticket = get_object_or_404(
+        Ticket.objects.select_related(
+            'registration', 'registration__event', 'registration__event__venue'
+        ),
+        access_token=access_token,
+    )
+    payload = request.build_absolute_uri(f'/checkin/{ticket.qr_token}')
+    pdf_bytes = ticket_pdf(ticket, qr_payload=payload)
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{ticket.ticket_number}.pdf"'
+    response['Cache-Control'] = 'private, max-age=300'
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([IsOrganizer])
+def resend_ticket_view(request, ticket_number):
+    """
+    POST /api/tickets/{ticket_number}/resend/ — email the ticket again.
+
+    Delivery is best effort, so there has to be a deliberate way to retry when
+    an attendee says the email never arrived.
+    """
+    ticket = get_object_or_404(
+        Ticket.objects.select_related(
+            'registration', 'registration__event', 'registration__event__venue'
+        ),
+        ticket_number=ticket_number,
+    )
+    sent = deliver_ticket(ticket, base_url=_public_base_url(request))
+
+    return Response(
+        {
+            'success': sent,
+            'message': (
+                f'Ticket {ticket.ticket_number} re-sent to {ticket.registration.email}.'
+                if sent else
+                'The ticket could not be emailed. Check the mail settings and the server log.'
+            ),
+        },
+        status=status.HTTP_200_OK if sent else status.HTTP_502_BAD_GATEWAY,
+    )
+
+
+def _public_base_url(request):
+    """Prefer the configured public site URL; fall back to this request's host."""
+    configured = getattr(settings, 'TICKET_BASE_URL', '')
+    return configured or request.build_absolute_uri('/').rstrip('/')
 
 
 @api_view(['GET'])

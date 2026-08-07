@@ -31,6 +31,21 @@ urlpatterns = [
         views.ticket_by_token_view,
         name='api-ticket-by-token',
     ),
+    path(
+        'tickets/by-token/<uuid:access_token>/qr.png',
+        views.ticket_qr_view,
+        name='api-ticket-qr',
+    ),
+    path(
+        'tickets/by-token/<uuid:access_token>/pdf/',
+        views.ticket_pdf_view,
+        name='api-ticket-pdf',
+    ),
+    path(
+        'tickets/<str:ticket_number>/resend/',
+        views.resend_ticket_view,
+        name='api-ticket-resend',
+    ),
 
     # Volunteer check-in
     path('checkin/verify/', views.check_in_verify_view, name='api-checkin-verify'),

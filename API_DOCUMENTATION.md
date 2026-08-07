@@ -244,6 +244,8 @@ capacity, and `title`/`venue`/`start_datetime` were already there.
 | POST | `/api/events/{slug}/register/` | `full_name`, `email`, `phone` required; `cnic`, `university`, `occupation` optional |
 | GET | `/api/registrations/status/{public_ref}/` | The attendee's own status, by unguessable UUID |
 | GET | `/api/tickets/by-token/{access_token}/` | The attendee's ticket, including the QR payload |
+| GET | `/api/tickets/by-token/{access_token}/qr.png` | The QR image itself, rendered on demand |
+| GET | `/api/tickets/by-token/{access_token}/pdf/` | The printable PDF ticket |
 
 Registration returns `201` with the registration and a `payment` block:
 
@@ -274,6 +276,8 @@ encodes. Results: `allowed`, `duplicate`, `invalid`, `unpaid`, `wrong_event`,
 
 ### Organizer (requires the Organizers group)
 
+`POST /api/tickets/{ticket_number}/resend/` re-sends a ticket email.
+
 Read-only: `/api/registrations/`, `/api/orders/`, `/api/tickets/`,
 `/api/check-in-logs/`. All support `?search=`, `?ordering=`, and
 `?event_slug=`. State changes happen through the admin's audited actions, never
@@ -303,3 +307,10 @@ instantly, priced events use bank transfer confirmed by an organizer in the
 admin. A real gateway is one class plus a signed webhook, with no changes to
 registration, tickets, or check-in. Nothing a client sends can mark an order
 paid.
+
+**Delivery.** The ticket email goes out on `transaction.on_commit`, so it is
+only sent once the ticket is durably saved, and a mail failure is logged rather
+than raised — a dead SMTP server must not roll back a paid registration. QR and
+PDF are generated per request and never written to disk, so a deploy on an
+ephemeral filesystem cannot destroy an issued ticket. `TICKET_BASE_URL`
+configures the public address the QR and ticket links point at.

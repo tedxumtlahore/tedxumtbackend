@@ -189,6 +189,12 @@ SIMPLE_JWT = {
     'UPDATE_LAST_LOGIN': True,
 }
 
+# ── Ticketing ──────────────────────────────────────────────────────────────
+# Where a ticket's QR and "view your ticket" links point. Emails are sent
+# without a request to build absolute URLs from (admin actions, management
+# commands), so the public site's address has to be configured explicitly.
+TICKET_BASE_URL = env('TICKET_BASE_URL', default='http://localhost:5173')
+
 # ── CORS ───────────────────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = env.list(
     'CORS_ALLOWED_ORIGINS',

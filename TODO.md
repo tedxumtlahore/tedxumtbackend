@@ -1,6 +1,6 @@
 # TEDxUMT Backend Development Roadmap
 
-Status: **CMS phases complete; ticketing Stage 1 complete.** 192 backend tests
+Status: **CMS complete; ticketing Stages 1-2 complete.** 215 backend tests
 passing; frontend builds clean and every route is wired to the API.
 
 ## Phase 0 — Foundation
@@ -227,12 +227,24 @@ Deliberate deviations from the PRD, and why:
    manual-transfer implementations; a real gateway is one class plus a signed
    webhook.
 
-## Stage 2 — ticket delivery (next)
+## Stage 2 — ticket delivery ✅
 
-- [ ] QR image generation (`qrcode`)
-- [ ] PDF ticket (`reportlab`)
-- [ ] Email on issue, via `transaction.on_commit`, failure-tolerant
-- [ ] "Resend ticket" admin action and staff endpoint
+- [x] QR image generation (`qrcode`), served at `/qr.png`
+- [x] Printable PDF ticket (`reportlab`), ticket-sized rather than A4
+- [x] Email on issue via `transaction.on_commit`, failure-tolerant
+- [x] "Resend ticket" admin action and organizer endpoint
+- [x] 23 further tests
+
+Notes:
+
+- **Nothing is stored.** QR and PDF are rendered per request. A stored PDF on
+  an ephemeral filesystem would vanish on deploy and 404 at the door.
+- **QR quiet zone is 4 modules**, the spec minimum. Measured: a 2- or 3-module
+  border fails to decode. `QR_QUIET_ZONE` guards this with a test.
+- **Email is best effort.** A dead SMTP server logs and moves on; the ticket
+  still exists and is viewable online. Resend is the retry path.
+- **Delivery is synchronous** — there is no queue. Fine for one event's volume;
+  move behind Celery before a large on-sale.
 
 ## Stage 3 — attendee & volunteer frontend
 

@@ -11,7 +11,7 @@ from django.contrib import admin, messages
 from django.utils.html import format_html
 
 from .models import CheckInLog, Order, Registration, Ticket, TicketSequence
-from .services import TicketingError, mark_paid
+from .services import TicketingError, deliver_ticket, mark_paid
 
 
 class OrderInline(admin.StackedInline):
@@ -173,7 +173,7 @@ class TicketAdmin(admin.ModelAdmin):
     list_select_related = ['registration', 'registration__event', 'checked_in_by']
     date_hierarchy = 'created_at'
     ordering = ['-created_at']
-    actions = ['undo_check_in']
+    actions = ['resend_ticket_email', 'undo_check_in']
 
     readonly_fields = [
         'registration', 'ticket_number', 'token_note',
@@ -198,6 +198,25 @@ class TicketAdmin(admin.ModelAdmin):
         # a ticket in from their desk. The attendee's emailed ticket is the
         # only place it appears.
         return format_html('<em>Hidden — the QR token is only on the attendee\'s ticket.</em>')
+
+    @admin.action(description='Resend ticket email')
+    def resend_ticket_email(self, request, queryset):
+        """Email delivery is best effort, so organizers need a retry button."""
+        sent, failed = 0, 0
+        for ticket in queryset.select_related('registration', 'registration__event'):
+            if deliver_ticket(ticket):
+                sent += 1
+            else:
+                failed += 1
+
+        if sent:
+            self.message_user(request, f'{sent} ticket email(s) sent.')
+        if failed:
+            self.message_user(
+                request,
+                f'{failed} could not be sent — check the mail settings and the server log.',
+                level=messages.ERROR,
+            )
 
     @admin.action(description='Undo check-in (let the attendee scan again)')
     def undo_check_in(self, request, queryset):

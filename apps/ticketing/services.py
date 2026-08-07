@@ -52,7 +52,8 @@ def _release_expired_holds(event):
 
 
 @transaction.atomic
-def register(event, *, full_name, email, phone, cnic='', university='', occupation=''):
+def register(event, *, full_name, email, phone, cnic='', university='',
+             occupation='', base_url=None):
     """
     Create a registration and its order.
 
@@ -114,7 +115,7 @@ def register(event, *, full_name, email, phone, cnic='', university='', occupati
     )
 
     if provider.settles_immediately:
-        mark_paid(order, reference='free')
+        mark_paid(order, reference='free', base_url=base_url)
     else:
         order.status = Order.Status.AWAITING_CONFIRMATION
         order.save(update_fields=['status', 'updated_at'])
@@ -127,7 +128,7 @@ def register(event, *, full_name, email, phone, cnic='', university='', occupati
 # ── Payment ────────────────────────────────────────────────────────────────
 
 @transaction.atomic
-def mark_paid(order, *, reference='', confirmed_by=None, payload=None):
+def mark_paid(order, *, reference='', confirmed_by=None, payload=None, base_url=None):
     """
     Settle an order and issue its ticket. The only path that creates a Ticket.
 
@@ -160,7 +161,7 @@ def mark_paid(order, *, reference='', confirmed_by=None, payload=None):
     registration.hold_expires_at = None
     registration.save(update_fields=['status', 'hold_expires_at', 'updated_at'])
 
-    ticket = issue_ticket(registration)
+    ticket = issue_ticket(registration, base_url=base_url)
     logger.info('Ticket %s issued for order %s', ticket.ticket_number, locked_order.pk)
     return ticket
 
@@ -223,8 +224,15 @@ def next_ticket_number(event):
 
 
 @transaction.atomic
-def issue_ticket(registration):
-    """Issue the ticket for a confirmed registration, or return the existing one."""
+def issue_ticket(registration, *, send_email=True, base_url=None):
+    """
+    Issue the ticket for a confirmed registration, or return the existing one.
+
+    Delivery is scheduled with `transaction.on_commit`, so the email only goes
+    out once the ticket is durably saved — and a mail failure afterwards cannot
+    roll back the issuance. Re-issuing an existing ticket does not re-send;
+    that is what the explicit resend action is for.
+    """
     existing = Ticket.objects.filter(registration=registration).first()
     if existing is not None:
         return existing
@@ -234,10 +242,22 @@ def issue_ticket(registration):
             'A ticket cannot be issued before the order is paid.', code='not_paid'
         )
 
-    return Ticket.objects.create(
+    ticket = Ticket.objects.create(
         registration=registration,
         ticket_number=next_ticket_number(registration.event),
     )
+
+    if send_email:
+        transaction.on_commit(lambda: deliver_ticket(ticket, base_url=base_url))
+
+    return ticket
+
+
+def deliver_ticket(ticket, *, base_url=None):
+    """Email a ticket to its attendee. Best effort; never raises."""
+    from .emails import send_ticket_email
+
+    return send_ticket_email(ticket, base_url=base_url)
 
 
 # ── Check-in ───────────────────────────────────────────────────────────────

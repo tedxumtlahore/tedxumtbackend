@@ -2,7 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenVerifyView
 
-from . import views
+from . import dashboard, views
 from .viewsets import CheckInLogViewSet, OrderViewSet, RegistrationViewSet, TicketViewSet
 
 router = SimpleRouter()
@@ -45,6 +45,16 @@ urlpatterns = [
         'tickets/<str:ticket_number>/resend/',
         views.resend_ticket_view,
         name='api-ticket-resend',
+    ),
+
+    # Organizer dashboard. Registered before the router so /registrations/export/
+    # is not swallowed by the registration detail route.
+    path('dashboard/', dashboard.dashboard_view, name='api-dashboard'),
+    path('analytics/', dashboard.analytics_view, name='api-analytics'),
+    path(
+        'registrations/export/',
+        dashboard.export_registrations_view,
+        name='api-registrations-export',
     ),
 
     # Volunteer check-in

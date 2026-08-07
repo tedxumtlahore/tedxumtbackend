@@ -1,6 +1,6 @@
 # TEDxUMT Backend Development Roadmap
 
-Status: **CMS complete; ticketing Stages 1-3 complete.** 215 backend tests
+Status: **CMS complete; ticketing complete (Stages 1-4).** 234 backend tests
 passing; frontend builds clean and every route is wired to the API.
 
 Scale: the event sells roughly **100 tickets**. That retires several concerns
@@ -269,9 +269,26 @@ PRD edge cases handled in the UI:
   ticket number, which is exactly what a volunteer needs to explain a refusal
   to the person in front of them.
 
-## Stage 4 — organizer dashboard
+## Stage 4 — organizer dashboard ✅
 
-- [ ] Live stats, analytics, CSV export
+- [x] `/api/dashboard/` — capacity, registrations, door counts, money, arrivals
+- [x] `/api/analytics/` — dense daily series
+- [x] `/api/registrations/export/` — attendee CSV
+- [x] `/organizer` page: live stats refreshing every 15s, event picker, CSV button
+- [x] 19 further tests
+
+Notes:
+
+- **The export is an allow-list.** `EXPORT_COLUMNS` excludes the CNIC hash and
+  both ticket tokens — a spreadsheet carrying a scan token is working door
+  access sitting in a downloads folder. A test asserts the exclusions so a new
+  model field cannot silently join the file.
+- **A failed background poll keeps the last good numbers on screen** rather than
+  blanking the dashboard someone is watching mid-event.
+- **The chart is hand-rolled.** Fourteen bars did not justify a charting
+  dependency larger than the rest of the dashboard.
+- **Money is quantized.** `Sum()` drops the decimal scale on SQLite, which
+  showed a total of "1500" beside a price of "1500.00".
 
 ---
 

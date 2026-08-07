@@ -314,3 +314,24 @@ than raised — a dead SMTP server must not roll back a paid registration. QR an
 PDF are generated per request and never written to disk, so a deploy on an
 ephemeral filesystem cannot destroy an issued ticket. `TICKET_BASE_URL`
 configures the public address the QR and ticket links point at.
+
+### Organizer dashboard
+
+All organizer-only. `?event=<slug>` selects the event; omitting it uses the
+soonest upcoming one, which is what an organizer means on event day.
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/api/dashboard/` | Capacity, registrations, door counts, money, recent arrivals |
+| GET | `/api/analytics/?days=30` | Dense daily series (gaps filled with zeros), 1–180 days |
+| GET | `/api/registrations/export/` | Attendee list as CSV |
+
+The export's columns are an explicit allow-list (`EXPORT_COLUMNS` in
+`apps/ticketing/dashboard.py`). It deliberately excludes `cnic_hash`,
+`qr_token`, `access_token`, and `public_ref` — a downloaded spreadsheet
+containing a scan token would be working door access sitting in someone's
+downloads folder. `cnic_last4` *is* included, for the ID check at the door.
+
+Money is quantized to two decimal places: `Sum()` over a DecimalField loses the
+field's scale on SQLite, which would otherwise show a total of "1500" beside a
+price of "1500.00".

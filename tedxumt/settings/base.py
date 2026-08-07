@@ -3,8 +3,10 @@ TEDxUMT Backend — Base Settings
 Shared by all environments.
 """
 
-import environ
+from datetime import timedelta
 from pathlib import Path
+
+import environ
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # tedxumt_backend/
@@ -33,6 +35,9 @@ DJANGO_APPS = [
 
 THIRD_PARTY_APPS = [
     'rest_framework',
+    # Lets a volunteer's token be revoked when they leave the team — a plain
+    # JWT stays valid until it expires, which is not good enough for door access.
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     'django_extensions',
@@ -49,6 +54,7 @@ LOCAL_APPS = [
     'apps.blog',
     'apps.sponsors',
     'apps.applications',
+    'apps.ticketing',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -144,7 +150,10 @@ REST_FRAMEWORK = {
         'apps.common.permissions.IsStaffOrReadOnly',
     ],
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        # Session auth drives the admin-backed CMS. JWT is for the volunteer
+        # check-in scanner, which runs on a phone and has no session cookie.
         'rest_framework.authentication.SessionAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
@@ -160,10 +169,24 @@ REST_FRAMEWORK = {
         'user': '5000/hour',
         'submission': '10/hour',     # contact + application form POSTs
         'newsletter': '20/hour',
+        'registration': '15/hour',   # event registration holds a seat, so cap it
+        'checkin': '2000/hour',      # a volunteer scans continuously on event day
     },
     'DEFAULT_PAGINATION_CLASS': 'apps.common.pagination.DefaultPagination',
     'PAGE_SIZE': 20,
     'EXCEPTION_HANDLER': 'apps.common.exceptions.api_exception_handler',
+}
+
+# ── JWT (volunteer check-in scanner) ───────────────────────────────────────
+# Short access tokens because the scanner holds them in browser storage, where
+# an XSS bug would expose them. Rotation plus the blacklist means a stolen or
+# revoked credential stops working quickly rather than at its natural expiry.
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(hours=12),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
 }
 
 # ── CORS ───────────────────────────────────────────────────────────────────

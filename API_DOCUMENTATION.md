@@ -8,16 +8,20 @@ Base URL (development): `http://127.0.0.1:8000/api/`
 
 ## Conventions
 
-**Authentication.** Session authentication only. The public site never
-authenticates — it reads content anonymously and posts to the form endpoints.
-Organizers sign in at `/admin/`; that same session authorises API writes.
+**Authentication.** Two schemes, both accepted everywhere. Session auth drives
+the CMS — organizers sign in at `/admin/` and that session authorises API
+writes. JWT (`/api/auth/token/`) exists for the volunteer check-in scanner,
+which runs on a phone with no session cookie. The public site authenticates for
+neither: it reads content anonymously and posts to the form endpoints.
 
 **Permissions.**
 
 | Class | Behaviour | Used by |
 |---|---|---|
 | `IsStaffOrReadOnly` | Anyone reads, only staff writes | All content endpoints |
-| `CreateOnlyOrStaff` | Anyone POSTs, only staff reads/edits | All submission endpoints |
+| `CreateOnlyOrStaff` | Anyone POSTs, only staff reads/edits | Submission endpoints |
+| `IsVolunteer` | Volunteers group, or staff | Check-in endpoints |
+| `IsOrganizer` | Organizers group, or staff | Ticketing collections |
 
 **Pagination.** List endpoints return
 `{"count": N, "next": url, "previous": url, "results": [...]}`.
@@ -52,8 +56,10 @@ hidden from the public but visible to a signed-in staff user, so organizers can
 preview unpublished content through the same endpoints.
 
 **Throttling.** 1000 requests/hour anonymous, 5000/hour authenticated.
-Form submissions are limited to 10/hour and newsletter signups to 20/hour per IP;
-staff are exempt.
+Form submissions are limited to 10/hour, newsletter signups to 20/hour, and
+event registration to 15/hour per IP; staff are exempt. Check-in is capped at
+2000/hour per volunteer — high enough for a full event day, low enough to bound
+a compromised account.
 
 ---
 
@@ -221,3 +227,79 @@ Every image field returns an **absolute** URL built from the incoming request
 (e.g. `http://127.0.0.1:8000/media/gallery/images/TEDx.jpg`), so the frontend can
 use the value directly without joining paths. Fields with no upload return `null`
 — the frontend substitutes a placeholder.
+
+---
+
+## Ticketing, registration & check-in
+
+Added by the ticketing module. The existing `Event` gained ticketing fields
+rather than a second event table being introduced — `max_attendees` is the
+capacity, and `title`/`venue`/`start_datetime` were already there.
+
+### Attendee (public)
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/api/events/{slug}/ticketing/` | Price, capacity, seats remaining, whether registration is open and why not |
+| POST | `/api/events/{slug}/register/` | `full_name`, `email`, `phone` required; `cnic`, `university`, `occupation` optional |
+| GET | `/api/registrations/status/{public_ref}/` | The attendee's own status, by unguessable UUID |
+| GET | `/api/tickets/by-token/{access_token}/` | The attendee's ticket, including the QR payload |
+
+Registration returns `201` with the registration and a `payment` block:
+
+```json
+{
+  "success": true,
+  "registration": { "ticket_number": "TEDX2026-0001", "ticket_access_token": "…" },
+  "payment": { "kind": "none|instructions|redirect", "message": "…", "details": {} }
+}
+```
+
+Business-rule rejections return **409**, not 400 — the input was well formed,
+the world said no. `code` distinguishes them: `duplicate_email`,
+`duplicate_cnic`, `registration_closed`.
+
+### Volunteer (requires the Volunteers group)
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| POST | `/api/auth/token/` | Obtain a JWT pair. Also `token/refresh/`, `token/verify/` |
+| POST | `/api/checkin/verify/` | Read-only lookup — shows the attendee without consuming the ticket |
+| POST | `/api/checkin/` | Verify **and** consume. 200 when allowed, 409 otherwise |
+| GET | `/api/checkin/history/` | This volunteer's last 50 scans |
+
+Both check-in endpoints accept either the bare `qr_token` or the full URL the QR
+encodes. Results: `allowed`, `duplicate`, `invalid`, `unpaid`, `wrong_event`,
+`cancelled`. Pass `event=<slug>` to scope a door to one event.
+
+### Organizer (requires the Organizers group)
+
+Read-only: `/api/registrations/`, `/api/orders/`, `/api/tickets/`,
+`/api/check-in-logs/`. All support `?search=`, `?ordering=`, and
+`?event_slug=`. State changes happen through the admin's audited actions, never
+through a PATCH.
+
+### Design notes worth knowing
+
+**No public lookup by ticket number.** Ticket numbers are sequential, so a
+public endpoint keyed on them would let anyone enumerate the attendee list. The
+PRD's `GET /api/ticket/{ticket_number}` is served instead at
+`/api/tickets/by-token/{access_token}/`.
+
+**Two tokens per ticket.** `qr_token` is what the door scanner accepts;
+`access_token` is what the attendee's page uses. A shared screenshot of a ticket
+page URL therefore does not hand over the value that opens the door.
+
+**CNIC is never stored.** A salted hash enforces one-registration-per-person and
+the last four digits let a volunteer eye-match an ID card. The number itself is
+accepted, hashed, and discarded.
+
+**Ticket numbers.** `TEDX{year}-0001`, per event. A second event in the same
+year gets `TEDX{year}-2-0001`, since the year-derived prefix alone would
+collide. Set `Event.ticket_prefix` for something specific.
+
+**Payment.** A provider abstraction with two implementations: free events settle
+instantly, priced events use bank transfer confirmed by an organizer in the
+admin. A real gateway is one class plus a signed webhook, with no changes to
+registration, tickets, or check-in. Nothing a client sends can mark an order
+paid.

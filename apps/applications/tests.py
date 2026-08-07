@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APITestCase
@@ -19,7 +20,12 @@ VALID_TALK_SUMMARY = (
 )
 
 # Throttling is a production concern; these tests exercise validation and permissions.
-NO_THROTTLE = {'DEFAULT_THROTTLE_RATES': {'anon': None, 'submission': None, 'newsletter': None}}
+# Merged into the real settings rather than replacing them — substituting the
+# whole dict would drop EXCEPTION_HANDLER and test the wrong error contract.
+NO_THROTTLE = {
+    **settings.REST_FRAMEWORK,
+    'DEFAULT_THROTTLE_RATES': dict.fromkeys(settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES']),
+}
 
 
 class SubmissionModelTests(TestCase):
@@ -62,7 +68,7 @@ class ContactAPITests(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('message', response.data)
+        self.assertIn('message', response.data['errors'])
 
     def test_invalid_email_is_rejected(self):
         response = self.client.post(reverse('api-contact'), {
@@ -71,7 +77,7 @@ class ContactAPITests(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('email', response.data)
+        self.assertIn('email', response.data['errors'])
 
     def test_status_cannot_be_set_by_the_submitter(self):
         self.client.post(reverse('api-contact'), {
@@ -152,7 +158,7 @@ class ApplicationAPITests(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('talk_summary', response.data)
+        self.assertIn('talk_summary', response.data['errors'])
 
     def test_valid_speaker_application_is_stored(self):
         response = self.client.post(reverse('api-apply-speaker'), {
@@ -181,7 +187,7 @@ class ApplicationAPITests(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn('availability', response.data)
+        self.assertIn('availability', response.data['errors'])
 
     def test_partner_application_is_stored(self):
         response = self.client.post(reverse('api-apply-partner'), {

@@ -15,6 +15,7 @@ import re
 
 from rest_framework import serializers
 
+from .links import qr_payload
 from .models import CheckInLog, Order, PaymentAccount, Registration, Ticket
 
 CNIC_PATTERN = re.compile(r'^[0-9A-Za-z\-\s]{6,25}$')
@@ -186,10 +187,12 @@ class TicketSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_qr_payload(self, obj):
-        """The check-in URL the QR encodes."""
-        request = self.context.get('request')
-        path = f'/checkin/{obj.qr_token}'
-        return request.build_absolute_uri(path) if request else path
+        """
+        The check-in URL the QR encodes — on the public site, not the API.
+        Built from TICKET_BASE_URL, because the request host is the API host and
+        a QR pointing there scans to a 404.
+        """
+        return qr_payload(obj, request=self.context.get('request'))
 
 
 class TicketAdminSerializer(serializers.ModelSerializer):

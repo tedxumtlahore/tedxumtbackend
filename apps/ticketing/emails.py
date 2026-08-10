@@ -25,26 +25,17 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from .links import qr_payload, ticket_url
 from .rendering import ticket_pdf
 
 logger = logging.getLogger('apps.ticketing')
 
 
-def build_qr_payload(ticket, *, base_url=None):
-    """
-    The absolute check-in URL the QR encodes.
-
-    Falls back to `TICKET_BASE_URL` when there is no request to build from,
-    which is the case for email sent from a management command or the admin.
-    """
-    base = (base_url or getattr(settings, 'TICKET_BASE_URL', '') or '').rstrip('/')
-    return f'{base}/checkin/{ticket.qr_token}'
-
-
-def build_ticket_url(ticket, *, base_url=None):
-    """Where the attendee views their own ticket in the browser."""
-    base = (base_url or getattr(settings, 'TICKET_BASE_URL', '') or '').rstrip('/')
-    return f'{base}/ticket/{ticket.access_token}'
+# Re-exported so existing callers keep working; the canonical definitions
+# live in links.py because the API, the PDF, and the email must all encode the
+# same URL.
+build_qr_payload = qr_payload
+build_ticket_url = ticket_url
 
 
 def send_ticket_email(ticket, *, base_url=None, fail_silently=True):

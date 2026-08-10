@@ -264,3 +264,54 @@ class ResendEndpointTests(APITestCase):
         response = self.client.post(reverse('api-ticket-resend', args=['TEDX9999-0001']))
 
         self.assertEqual(response.status_code, 404)
+
+
+@override_settings(TICKET_BASE_URL='https://tedxumt.pk')
+class TicketLinkTests(TestCase):
+    """
+    The QR must point at the public site, not the API.
+
+    They are different origins in every deployment — different ports locally,
+    different hosts in production. Building the URL from the incoming request
+    yields the API host, where /checkin/<token> does not exist, so the QR scans
+    to a 404. Caught while setting up a phone test: the QR encoded port 8000.
+    """
+
+    def setUp(self):
+        self.event = make_event()
+        self.registration, _, _ = register(self.event, **VALID)
+        self.ticket = self.registration.ticket
+
+    def test_the_api_payload_uses_the_public_site(self):
+        response = self.client.get(reverse('api-ticket-by-token', args=[self.ticket.access_token]))
+
+        payload = response.data['qr_payload']
+        self.assertTrue(payload.startswith('https://tedxumt.pk/checkin/'), payload)
+        self.assertIn(str(self.ticket.qr_token), payload)
+
+    def test_the_emailed_link_matches_the_api(self):
+        from apps.ticketing.links import qr_payload, ticket_url
+
+        self.assertEqual(
+            qr_payload(self.ticket), f'https://tedxumt.pk/checkin/{self.ticket.qr_token}'
+        )
+        self.assertEqual(
+            ticket_url(self.ticket), f'https://tedxumt.pk/ticket/{self.ticket.access_token}'
+        )
+
+    @override_settings(ALLOWED_HOSTS=['api.internal.example', 'testserver'])
+    def test_the_request_host_never_overrides_the_configured_site(self):
+        """Even served from the API host, the QR must name the public site."""
+        response = self.client.get(
+            reverse('api-ticket-by-token', args=[self.ticket.access_token]),
+            HTTP_HOST='api.internal.example',
+        )
+
+        self.assertNotIn('api.internal.example', response.data['qr_payload'])
+        self.assertTrue(response.data['qr_payload'].startswith('https://tedxumt.pk/'))
+
+    @override_settings(TICKET_BASE_URL='')
+    def test_it_falls_back_to_the_request_when_unconfigured(self):
+        response = self.client.get(reverse('api-ticket-by-token', args=[self.ticket.access_token]))
+
+        self.assertIn(f'/checkin/{self.ticket.qr_token}', response.data['qr_payload'])

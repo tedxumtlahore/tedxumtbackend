@@ -42,6 +42,7 @@ from .serializers import (
     RegistrationSerializer,
     TicketSerializer,
 )
+from .links import qr_payload
 from .rendering import qr_png, ticket_pdf
 from .services import (
     TicketingError,
@@ -213,7 +214,7 @@ def ticket_qr_view(request, access_token):
     with a broken image.
     """
     ticket = get_object_or_404(Ticket.objects.select_related('registration'), access_token=access_token)
-    payload = request.build_absolute_uri(f'/checkin/{ticket.qr_token}')
+    payload = qr_payload(ticket, request=request)
     response = HttpResponse(qr_png(payload), content_type='image/png')
     # Private: this image is the ticket. Shared caches must not keep a copy.
     response['Cache-Control'] = 'private, max-age=300'
@@ -230,7 +231,7 @@ def ticket_pdf_view(request, access_token):
         ),
         access_token=access_token,
     )
-    payload = request.build_absolute_uri(f'/checkin/{ticket.qr_token}')
+    payload = qr_payload(ticket, request=request)
     pdf_bytes = ticket_pdf(ticket, qr_payload=payload)
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')

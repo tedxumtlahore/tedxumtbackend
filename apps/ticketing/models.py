@@ -15,6 +15,7 @@ Two things drive the shape of this module:
 import hashlib
 import re
 import uuid
+from pathlib import Path
 
 from django.conf import settings
 from django.db import models
@@ -36,6 +37,19 @@ def hash_identifier(raw):
         return '', ''
     digest = hashlib.sha256(f'{settings.SECRET_KEY}:{normalised}'.encode()).hexdigest()
     return digest, normalised[-4:]
+
+
+def payment_proof_path(instance, filename):
+    """
+    Store payment screenshots under an unguessable name.
+
+    Django keeps the uploaded filename, so `screenshot.png` would sit at a
+    predictable media URL. These images routinely show the sender's wallet
+    balance and recent transactions, so the path is randomised — and the URL is
+    never exposed through a public serializer.
+    """
+    suffix = Path(filename).suffix.lower()[:10] or '.png'
+    return f'payments/proofs/{uuid.uuid4().hex}{suffix}'
 
 
 class RegistrationQuerySet(models.QuerySet):
@@ -154,8 +168,27 @@ class Order(TimeStampedModel):
     reference = models.CharField(
         max_length=120,
         blank=True,
-        help_text='Bank transfer reference, or the gateway transaction id.',
+        help_text='Transaction ID from the transfer, or the gateway reference.',
     )
+
+    # ── What the attendee tells us after paying ────────────────────────────
+    # Easypaisa and JazzCash person-to-person transfers cannot carry a note,
+    # so a reference code we generate is invisible on the statement. Matching
+    # therefore relies on the number the money came from, plus the transaction
+    # ID and screenshot the attendee submits. None of this is proof — an
+    # organizer still checks the statement — but it makes the check a glance
+    # rather than a hunt.
+    paid_from_number = models.CharField(
+        max_length=30,
+        blank=True,
+        help_text='The wallet or account number the attendee paid from.',
+    )
+    payment_proof = models.ImageField(
+        upload_to=payment_proof_path,
+        blank=True,
+        help_text='Screenshot of the transfer. Staff-only — never exposed publicly.',
+    )
+    proof_submitted_at = models.DateTimeField(null=True, blank=True)
     idempotency_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     raw_payload = models.JSONField(
         default=dict,
@@ -184,6 +217,49 @@ class Order(TimeStampedModel):
 
     def __str__(self):
         return f'{self.registration.full_name} — {self.get_status_display()}'
+
+
+class PaymentAccount(BaseModel):
+    """
+    An account attendees send money to — Easypaisa, JazzCash, or a bank.
+
+    Organizers usually offer more than one, so this is a list rather than a
+    field on settings. The details are shown to anyone with a pending order,
+    which is the same exposure as printing them on a poster.
+    """
+
+    class ProviderChoices(models.TextChoices):
+        EASYPAISA = 'easypaisa', 'Easypaisa'
+        JAZZCASH = 'jazzcash', 'JazzCash'
+        BANK = 'bank', 'Bank transfer'
+        OTHER = 'other', 'Other'
+
+    provider = models.CharField(max_length=20, choices=ProviderChoices.choices)
+    account_title = models.CharField(
+        max_length=150,
+        help_text='The name the account is registered under — attendees check this before sending.',
+    )
+    account_number = models.CharField(
+        max_length=60,
+        help_text='Wallet number, or account number for a bank.',
+    )
+    bank_name = models.CharField(max_length=100, blank=True)
+    iban = models.CharField(max_length=40, blank=True)
+    note = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text='Optional extra instruction, e.g. "send as a personal transfer, not a bill payment".',
+    )
+    order = models.PositiveSmallIntegerField(default=0)
+    is_visible = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['order', 'provider']
+        verbose_name = 'Payment Account'
+        verbose_name_plural = 'Payment Accounts'
+
+    def __str__(self):
+        return f'{self.get_provider_display()} — {self.account_number}'
 
 
 class TicketSequence(models.Model):

@@ -166,6 +166,41 @@ def mark_paid(order, *, reference='', confirmed_by=None, payload=None, base_url=
     return ticket
 
 
+def submit_payment_proof(registration, *, reference='', paid_from_number='', proof=None):
+    """
+    Record what the attendee says about their transfer.
+
+    Explicitly *not* proof of payment: it never advances the order's status.
+    An organizer still checks the statement and confirms. All this does is turn
+    that check from a hunt through a list of anonymous transfers into matching
+    one number against one row.
+    """
+    order = getattr(registration, 'order', None)
+    if order is None:
+        raise TicketingError('This registration has no payment to confirm.', code='no_order')
+
+    if order.is_paid:
+        raise TicketingError(
+            'This payment has already been confirmed — check your email for the ticket.',
+            code='already_paid',
+        )
+    if order.status in {Order.Status.CANCELLED, Order.Status.REFUNDED}:
+        raise TicketingError('This order is closed.', code='order_closed')
+
+    if reference:
+        order.reference = reference.strip()[:120]
+    if paid_from_number:
+        order.paid_from_number = paid_from_number.strip()[:30]
+    if proof is not None:
+        order.payment_proof = proof
+    order.proof_submitted_at = timezone.now()
+    order.status = Order.Status.AWAITING_CONFIRMATION
+    order.save()
+
+    logger.info('Payment proof submitted for registration %s', registration.public_ref)
+    return order
+
+
 def mark_failed(order, *, reason='', payload=None):
     order.status = Order.Status.FAILED
     if reason:

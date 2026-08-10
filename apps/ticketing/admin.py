@@ -10,7 +10,7 @@ turns a bank transfer into an issued ticket.
 from django.contrib import admin, messages
 from django.utils.html import format_html
 
-from .models import CheckInLog, Order, Registration, Ticket, TicketSequence
+from .models import CheckInLog, Order, PaymentAccount, Registration, Ticket, TicketSequence
 from .services import TicketingError, deliver_ticket, mark_paid
 
 
@@ -20,12 +20,24 @@ class OrderInline(admin.StackedInline):
     can_delete = False
     readonly_fields = [
         'provider', 'status', 'amount', 'currency', 'reference',
+        'paid_from_number', 'proof_preview', 'proof_submitted_at',
         'paid_at', 'confirmed_by', 'idempotency_key', 'raw_payload',
     ]
     fields = readonly_fields
 
     def has_add_permission(self, request, obj=None):
         return False
+
+    @admin.display(description='Payment screenshot')
+    def proof_preview(self, obj):
+        """Shown so confirming is a glance at the statement, not a hunt."""
+        if obj.pk and obj.payment_proof:
+            return format_html(
+                '<a href="{}" target="_blank" rel="noopener">'
+                '<img src="{}" style="max-height:260px;border-radius:6px" /></a>',
+                obj.payment_proof.url, obj.payment_proof.url,
+            )
+        return '— not submitted'
 
 
 class TicketInline(admin.StackedInline):
@@ -47,7 +59,7 @@ class TicketInline(admin.StackedInline):
 class RegistrationAdmin(admin.ModelAdmin):
     list_display = [
         'full_name', 'email', 'event', 'status', 'payment_status',
-        'ticket_number', 'checked_in_display', 'created_at',
+        'paid_from', 'proof_flag', 'ticket_number', 'checked_in_display', 'created_at',
     ]
     list_display_links = ['full_name']
     list_filter = ['status', 'event', 'created_at']
@@ -81,6 +93,17 @@ class RegistrationAdmin(admin.ModelAdmin):
     def payment_status(self, obj):
         order = getattr(obj, 'order', None)
         return order.get_status_display() if order else '—'
+
+    @admin.display(description='Paid from')
+    def paid_from(self, obj):
+        """The number to look for on the statement."""
+        order = getattr(obj, 'order', None)
+        return (order.paid_from_number or '—') if order else '—'
+
+    @admin.display(description='Proof', boolean=True)
+    def proof_flag(self, obj):
+        order = getattr(obj, 'order', None)
+        return bool(order and order.proof_submitted_at)
 
     @admin.display(description='Ticket')
     def ticket_number(self, obj):
@@ -246,6 +269,39 @@ class CheckInLogAdmin(admin.ModelAdmin):
     @admin.display(description='Attendee')
     def attendee(self, obj):
         return obj.ticket.registration.full_name if obj.ticket else '—'
+
+
+@admin.register(PaymentAccount)
+class PaymentAccountAdmin(admin.ModelAdmin):
+    """
+    The accounts attendees send money to.
+
+    Whatever is ticked visible here is what appears on the payment page, so
+    check the number carefully — a typo sends every attendee's money to a
+    stranger.
+    """
+
+    list_display = ['provider', 'account_title', 'account_number', 'order', 'is_visible']
+    list_editable = ['order', 'is_visible']
+    list_display_links = ['provider']
+    list_filter = ['provider', 'is_visible', 'is_active']
+    search_fields = ['account_title', 'account_number', 'bank_name', 'iban']
+    ordering = ['order', 'provider']
+    readonly_fields = ['created_at', 'updated_at']
+
+    fieldsets = (
+        ('Account', {
+            'fields': ('provider', 'account_title', 'account_number'),
+            'description': (
+                'The account title is what attendees see before sending — it should '
+                'match the name on the receiving account exactly, or people will '
+                'hesitate to pay.'
+            ),
+        }),
+        ('Bank only', {'fields': ('bank_name', 'iban'), 'classes': ('collapse',)}),
+        ('Display', {'fields': ('note', 'order', 'is_visible')}),
+        ('System', {'fields': ('is_active', 'created_at', 'updated_at')}),
+    )
 
 
 @admin.register(TicketSequence)

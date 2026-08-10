@@ -32,16 +32,25 @@ from rest_framework.response import Response
 from apps.common.permissions import IsOrganizer, IsVolunteer
 from apps.events.models import Event
 
-from .models import CheckInLog, Registration, Ticket
+from .models import CheckInLog, PaymentAccount, Registration, Ticket
 from .serializers import (
     CheckInLogSerializer,
     CheckInRequestSerializer,
+    PaymentAccountSerializer,
+    PaymentProofSerializer,
     RegistrationCreateSerializer,
     RegistrationSerializer,
     TicketSerializer,
 )
 from .rendering import qr_png, ticket_pdf
-from .services import TicketingError, check_in, deliver_ticket, inspect_ticket, register
+from .services import (
+    TicketingError,
+    check_in,
+    deliver_ticket,
+    inspect_ticket,
+    register,
+    submit_payment_proof,
+)
 from .throttling import CheckInRateThrottle, RegistrationRateThrottle
 
 logger = logging.getLogger('apps.ticketing')
@@ -136,6 +145,61 @@ def ticket_by_token_view(request, access_token):
         access_token=access_token,
     )
     return Response(TicketSerializer(ticket, context={'request': request}).data)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def payment_accounts_view(request):
+    """
+    GET /api/payment-accounts/ — where to send the money.
+
+    Public: these are collection accounts, the same exposure as printing them
+    on a poster. The attendee's own registration page reads this to show the
+    numbers alongside their amount.
+    """
+    accounts = PaymentAccount.objects.filter(is_active=True, is_visible=True)
+    return Response({'accounts': PaymentAccountSerializer(accounts, many=True).data})
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([RegistrationRateThrottle])
+def payment_proof_view(request, public_ref):
+    """
+    POST /api/registrations/status/{public_ref}/payment-proof/ — "I've paid".
+
+    Authorised by knowing the registration's unguessable reference, which only
+    the attendee has. It records what they say and nothing more: the order stays
+    unpaid until an organizer checks the statement and confirms. Nothing a
+    client posts here can issue a ticket.
+    """
+    registration = get_object_or_404(
+        Registration.objects.select_related('order', 'event'), public_ref=public_ref
+    )
+
+    serializer = PaymentProofSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    try:
+        submit_payment_proof(
+            registration,
+            reference=serializer.validated_data.get('reference', ''),
+            paid_from_number=serializer.validated_data.get('paid_from_number', ''),
+            proof=serializer.validated_data.get('proof'),
+        )
+    except TicketingError as exc:
+        return Response(
+            {'success': False, 'message': exc.message, 'code': exc.code, 'errors': {}},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    registration.refresh_from_db()
+    return Response({
+        'success': True,
+        'message': "Thanks — we'll confirm your payment and email your ticket, "
+                   'usually within one working day.',
+        'registration': RegistrationSerializer(registration, context={'request': request}).data,
+    })
 
 
 @api_view(['GET'])

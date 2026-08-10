@@ -87,19 +87,34 @@ class ManualTransferProvider(PaymentProvider):
     label = 'Bank transfer (confirmed by organizers)'
 
     def start(self, order):
+        from .models import PaymentAccount
+
         event = order.registration.event
+        accounts = PaymentAccount.objects.filter(is_active=True, is_visible=True)
+
         return PaymentInstructions(
             kind='instructions',
             message=(
-                f'Transfer {order.currency} {order.amount:.2f} using the details below, '
-                'then reply with your transfer reference. We will email your ticket '
-                'once the payment is confirmed — usually within one working day.'
+                f'Send {order.currency} {order.amount:.2f} to one of the accounts below, '
+                'then come back and tell us the transaction ID. We will email your '
+                'ticket once the payment is confirmed — usually within one working day.'
             ),
             details={
                 'amount': f'{order.amount:.2f}',
                 'currency': order.currency,
                 'event': event.title,
-                'your_reference': str(order.registration.public_ref)[:8].upper(),
+                'accounts': [
+                    {
+                        'provider': account.provider,
+                        'provider_label': account.get_provider_display(),
+                        'account_title': account.account_title,
+                        'account_number': account.account_number,
+                        'bank_name': account.bank_name,
+                        'iban': account.iban,
+                        'note': account.note,
+                    }
+                    for account in accounts
+                ],
             },
         )
 

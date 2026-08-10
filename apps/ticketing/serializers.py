@@ -15,7 +15,7 @@ import re
 
 from rest_framework import serializers
 
-from .models import CheckInLog, Order, Registration, Ticket
+from .models import CheckInLog, Order, PaymentAccount, Registration, Ticket
 
 CNIC_PATTERN = re.compile(r'^[0-9A-Za-z\-\s]{6,25}$')
 
@@ -62,12 +62,55 @@ class RegistrationCreateSerializer(serializers.Serializer):
         return cleaned
 
 
+class PaymentAccountSerializer(serializers.ModelSerializer):
+    """Public — these are collection accounts, meant to be handed out."""
+
+    provider_label = serializers.CharField(source='get_provider_display', read_only=True)
+
+    class Meta:
+        model = PaymentAccount
+        fields = [
+            'id', 'provider', 'provider_label', 'account_title', 'account_number',
+            'bank_name', 'iban', 'note',
+        ]
+        read_only_fields = fields
+
+
+class PaymentProofSerializer(serializers.Serializer):
+    """
+    What the attendee submits after transferring.
+
+    `proof` is write-only and the stored image is never serialized back — a
+    payment screenshot usually shows the sender's balance and recent history.
+    """
+
+    reference = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    paid_from_number = serializers.CharField(max_length=30, required=False, allow_blank=True)
+    proof = serializers.ImageField(required=False, write_only=True)
+
+    def validate(self, attrs):
+        if not any(attrs.get(field) for field in ('reference', 'paid_from_number', 'proof')):
+            raise serializers.ValidationError(
+                'Give us the transaction ID, the number you paid from, or a screenshot — '
+                'otherwise we cannot match your payment.'
+            )
+        return attrs
+
+    def validate_reference(self, value):
+        return (value or '').strip()
+
+    def validate_paid_from_number(self, value):
+        return (value or '').strip()
+
+
 class RegistrationSerializer(serializers.ModelSerializer):
     """The attendee's own view of their registration, fetched by `public_ref`."""
 
     event_title = serializers.CharField(source='event.title', read_only=True)
     event_slug = serializers.CharField(source='event.slug', read_only=True)
     payment_status = serializers.CharField(source='order.status', read_only=True)
+    payment_reference = serializers.CharField(source='order.reference', read_only=True)
+    proof_submitted = serializers.SerializerMethodField()
     amount = serializers.DecimalField(
         source='order.amount', max_digits=9, decimal_places=2, read_only=True
     )
@@ -79,10 +122,15 @@ class RegistrationSerializer(serializers.ModelSerializer):
         model = Registration
         fields = [
             'public_ref', 'event_title', 'event_slug', 'full_name', 'email', 'phone',
-            'university', 'occupation', 'status', 'payment_status', 'amount', 'currency',
+            'university', 'occupation', 'status', 'payment_status', 'payment_reference',
+            'proof_submitted', 'amount', 'currency',
             'ticket_number', 'ticket_access_token', 'created_at',
         ]
         read_only_fields = fields
+
+    def get_proof_submitted(self, obj):
+        order = getattr(obj, 'order', None)
+        return bool(order and order.proof_submitted_at)
 
 
 class RegistrationAdminSerializer(serializers.ModelSerializer):
@@ -213,12 +261,14 @@ class OrderAdminSerializer(serializers.ModelSerializer):
     confirmed_by_username = serializers.CharField(
         source='confirmed_by.username', read_only=True, default=None
     )
+    has_proof = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
             'id', 'attendee_name', 'event_title', 'provider', 'status', 'amount',
-            'currency', 'reference', 'paid_at', 'confirmed_by_username', 'created_at',
+            'currency', 'reference', 'paid_from_number', 'has_proof', 'proof_submitted_at',
+            'paid_at', 'confirmed_by_username', 'created_at',
         ]
         # Status is advanced only through services.mark_paid, never by a PATCH.
         read_only_fields = fields

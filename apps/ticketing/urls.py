@@ -21,10 +21,16 @@ urlpatterns = [
     # Attendee
     path('events/<slug:slug>/ticketing/', views.event_ticketing_view, name='api-event-ticketing'),
     path('events/<slug:slug>/register/', views.register_view, name='api-event-register'),
+    path('payment-accounts/', views.payment_accounts_view, name='api-payment-accounts'),
     path(
         'registrations/status/<uuid:public_ref>/',
         views.registration_status_view,
         name='api-registration-status',
+    ),
+    path(
+        'registrations/status/<uuid:public_ref>/payment-proof/',
+        views.payment_proof_view,
+        name='api-payment-proof',
     ),
     path(
         'tickets/by-token/<uuid:access_token>/',

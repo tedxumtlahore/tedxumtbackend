@@ -1,6 +1,6 @@
 # TEDxUMT Backend Development Roadmap
 
-Status: **CMS complete; ticketing complete (Stages 1-4).** 234 backend tests
+Status: **CMS complete; ticketing complete (Stages 1-5).** 252 backend tests
 passing; frontend builds clean and every route is wired to the API.
 
 Scale: the event sells roughly **100 tickets**. That retires several concerns
@@ -268,6 +268,32 @@ PRD edge cases handled in the UI:
 - **A refused scan still shows the attendee.** The 409 carries the name and
   ticket number, which is exactly what a volunteer needs to explain a refusal
   to the person in front of them.
+
+## Stage 5 — manual payment, done properly ✅
+
+- [x] `PaymentAccount` — configurable Easypaisa / JazzCash / bank accounts
+- [x] Registration instructions now actually carry the account details
+- [x] `payment-proof` endpoint: transaction ID, sending number, screenshot
+- [x] `/registration/<public_ref>` page: accounts, "I've paid" form, live status
+- [x] Admin shows the sending number and screenshot beside each pending order
+- [x] 18 further tests
+
+Why this exists rather than a payment gateway: at ~100 tickets, a gateway costs
+merchant onboarding and 2–3% in fees to save a couple of hours of human effort.
+Manual confirmation also has no failure mode worse than a one-day wait, whereas
+untested payment code fails by taking money without delivering.
+
+Notes:
+
+- **Reporting a transfer is not paying.** The proof endpoint never advances the
+  order; only an organizer checking the statement does. Tested explicitly.
+- **The sending number is the matching key.** Easypaisa and JazzCash P2P
+  transfers cannot carry a reference note, so a generated code is invisible on
+  the statement. The number the money came from is what actually matches.
+- **Screenshots get randomised filenames.** These images usually show the
+  sender's balance and history; a predictable path would be a guessable URL.
+- **Fixed a 404**: registering for a paid event navigated to
+  `/registration/<ref>`, a route that did not exist.
 
 ## Stage 4 — organizer dashboard ✅
 

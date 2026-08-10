@@ -242,7 +242,9 @@ capacity, and `title`/`venue`/`start_datetime` were already there.
 |---|---|---|
 | GET | `/api/events/{slug}/ticketing/` | Price, capacity, seats remaining, whether registration is open and why not |
 | POST | `/api/events/{slug}/register/` | `full_name`, `email`, `phone` required; `cnic`, `university`, `occupation` optional |
+| GET | `/api/payment-accounts/` | Where to send money — Easypaisa / JazzCash / bank |
 | GET | `/api/registrations/status/{public_ref}/` | The attendee's own status, by unguessable UUID |
+| POST | `/api/registrations/status/{public_ref}/payment-proof/` | "I've paid" — transaction ID, sending number, optional screenshot |
 | GET | `/api/tickets/by-token/{access_token}/` | The attendee's ticket, including the QR payload |
 | GET | `/api/tickets/by-token/{access_token}/qr.png` | The QR image itself, rendered on demand |
 | GET | `/api/tickets/by-token/{access_token}/pdf/` | The printable PDF ticket |
@@ -304,7 +306,17 @@ collide. Set `Event.ticket_prefix` for something specific.
 
 **Payment.** A provider abstraction with two implementations: free events settle
 instantly, priced events use bank transfer confirmed by an organizer in the
-admin. A real gateway is one class plus a signed webhook, with no changes to
+admin. Registering for a priced event returns the configured payment accounts
+alongside the amount.
+
+**Reporting a transfer is not paying.** `payment-proof` records the attendee's
+transaction ID, the number they sent from, and an optional screenshot — then
+stops. The order stays unpaid until an organizer checks the statement. Easypaisa
+and JazzCash P2P transfers cannot carry a reference note, so the *sending
+number* is the practical matching key; it is surfaced in the admin list beside
+each pending registration. Screenshots are stored under randomised filenames
+because they typically show the sender's balance, and their URL is never
+serialized publicly. A real gateway is one class plus a signed webhook, with no changes to
 registration, tickets, or check-in. Nothing a client sends can mark an order
 paid.
 

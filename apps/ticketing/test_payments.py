@@ -18,6 +18,8 @@ from rest_framework.test import APITestCase
 from apps.ticketing.models import Order, PaymentAccount, Registration, Ticket
 from apps.ticketing.services import TicketingError, mark_paid, register, submit_payment_proof
 
+from apps.common.permissions import ORGANIZERS_GROUP
+
 from .tests import NO_THROTTLE, VALID, make_event, make_volunteer
 
 TINY_GIF = (
@@ -238,3 +240,93 @@ class PaymentProofAPITests(MediaIsolated, APITestCase):
         self.assertFalse(before['proof_submitted'])
         self.assertTrue(after['proof_submitted'])
         self.assertEqual(after['payment_reference'], 'TXN-9')
+
+
+@override_settings(REST_FRAMEWORK=NO_THROTTLE)
+class OrderCollectionTests(APITestCase):
+    """
+    The organizer-facing order list.
+
+    This existed untested and returned a 500: `has_proof` was declared as a
+    SerializerMethodField with no matching method. Serializing anything through
+    it raised, so the endpoint was broken for every caller who was allowed to
+    use it — found by probing the authorization matrix rather than by the suite.
+    """
+
+    def setUp(self):
+        self.event = make_event(title='Paid Event', ticket_price=Decimal('1500.00'))
+        self.registration, self.order, _ = register(self.event, **VALID)
+        self.client.force_authenticate(make_volunteer('order-reader', group=ORGANIZERS_GROUP))
+
+    def test_an_organizer_can_list_orders(self):
+        response = self.client.get('/api/orders/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 1)
+
+    def test_the_row_reports_whether_proof_was_submitted(self):
+        before = self.client.get('/api/orders/').data['results'][0]
+        self.assertFalse(before['has_proof'])
+
+        submit_payment_proof(self.registration, reference='TXN-1', paid_from_number='03001112222')
+
+        after = self.client.get('/api/orders/').data['results'][0]
+        self.assertTrue(after['has_proof'])
+        self.assertEqual(after['paid_from_number'], '03001112222')
+
+    def test_orders_are_read_only_through_the_api(self):
+        response = self.client.patch(f'/api/orders/{self.order.pk}/', {'status': 'paid'}, format='json')
+
+        self.assertEqual(response.status_code, 405)
+        self.order.refresh_from_db()
+        self.assertNotEqual(self.order.status, Order.Status.PAID)
+
+    def test_a_volunteer_cannot_list_orders(self):
+        self.client.force_authenticate(make_volunteer('not-an-organizer'))
+
+        self.assertEqual(self.client.get('/api/orders/').status_code, 403)
+
+
+class RegistrationThrottleTests(APITestCase):
+    """
+    The registration throttle is the only thing stopping a script from taking
+    every seat. It was wired but untested — a live probe could not tell a
+    working throttle from a missing one, because development allows 200/hour.
+
+    DRF reads DEFAULT_THROTTLE_RATES into a class attribute at import time, so
+    override_settings cannot reach it; the rate is patched on the class.
+    """
+
+    def setUp(self):
+        from rest_framework.throttling import SimpleRateThrottle
+
+        self.original = dict(SimpleRateThrottle.THROTTLE_RATES)
+        SimpleRateThrottle.THROTTLE_RATES = {**self.original, 'registration': '3/hour'}
+        SimpleRateThrottle.cache.clear()
+        self.event = make_event(max_attendees=None)
+
+    def tearDown(self):
+        from rest_framework.throttling import SimpleRateThrottle
+
+        SimpleRateThrottle.THROTTLE_RATES = self.original
+        SimpleRateThrottle.cache.clear()
+
+    def register_once(self, n):
+        return self.client.post(
+            reverse('api-event-register', args=[self.event.slug]),
+            {'full_name': f'Bulk {n}', 'email': f'bulk{n}@example.com', 'phone': '03001234567'},
+            format='json',
+        )
+
+    def test_a_flood_of_registrations_is_cut_off(self):
+        codes = [self.register_once(n).status_code for n in range(5)]
+
+        self.assertEqual(codes[:3], [201, 201, 201])
+        self.assertIn(429, codes, 'the throttle must engage — otherwise a script can take every seat')
+
+    def test_the_throttle_does_not_consume_capacity(self):
+        """A rejected request must not hold a seat."""
+        for n in range(5):
+            self.register_once(n)
+
+        self.assertEqual(Registration.objects.filter(event=self.event).count(), 3)

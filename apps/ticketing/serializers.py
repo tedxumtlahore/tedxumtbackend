@@ -272,3 +272,7 @@ class OrderAdminSerializer(serializers.ModelSerializer):
         ]
         # Status is advanced only through services.mark_paid, never by a PATCH.
         read_only_fields = fields
+
+    def get_has_proof(self, obj):
+        """Whether the attendee has reported their transfer yet."""
+        return bool(obj.proof_submitted_at)

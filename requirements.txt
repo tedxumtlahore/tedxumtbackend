@@ -9,8 +9,12 @@ reportlab>=4.2,<5.0
 django-environ>=0.11,<0.12
 django-extensions>=3.2,<4.0
 
-# Production extras (uncomment for prod)
-# gunicorn>=23.0,<24.0
-# psycopg2-binary>=2.9,<3.0
-# whitenoise>=6.7,<7.0
-# django-storages[s3]>=1.14,<2.0
+# Production extras.
+# Installed everywhere so that a deploy cannot fail on a dependency that only
+# exists in a comment. None of these are imported unless the production
+# settings module is active: whitenoise is wired by a try/except import, and
+# django-storages is only referenced by STORAGES entries that base.py omits.
+gunicorn>=23.0,<24.0
+psycopg2-binary>=2.9,<3.0
+whitenoise>=6.7,<7.0
+django-storages[s3]>=1.14,<2.0

@@ -14,6 +14,7 @@ REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'] = {  # noqa: F405
     'submission': '60/hour',
     'newsletter': '60/hour',
     'registration': '200/hour',
+    'account': '100/hour',
 }
 
 # Emails print to the console instead of needing an SMTP server.

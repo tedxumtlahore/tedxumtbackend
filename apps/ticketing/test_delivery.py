@@ -109,6 +109,28 @@ class TicketEndpointTests(TestCase):
         self.assertNotIn(str(self.ticket.access_token), response.data['qr_payload'])
 
 
+@override_settings(TICKET_EMAIL_ENABLED=False)
+class EmailDisabledTests(TestCase):
+    """Tickets are delivered through the attendee's account, not by email."""
+
+    def test_issuing_a_ticket_sends_nothing(self):
+        registration, _, _ = register(make_event(), **VALID)
+
+        self.assertTrue(hasattr(registration, 'ticket'), 'the ticket still exists')
+        self.assertEqual(len(mail.outbox), 0, 'but nothing was emailed')
+
+    def test_an_organizer_can_still_force_a_send(self):
+        """The explicit resend action means it, whatever the default channel is."""
+        registration, _, _ = register(make_event(), **VALID)
+
+        self.assertTrue(deliver_ticket(registration.ticket, force=True))
+        self.assertEqual(len(mail.outbox), 1)
+
+
+# Delivery is through the attendee's account by default, so ticket emails are
+# switched off. These tests are about the email machinery itself, which has to
+# keep working for whenever a mail provider is connected — so they turn it on.
+@override_settings(TICKET_EMAIL_ENABLED=True)
 class TicketEmailTests(TestCase):
     """
     Delivery is scheduled with `transaction.on_commit`, which never fires under

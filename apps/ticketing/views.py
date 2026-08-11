@@ -26,7 +26,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.common.permissions import IsOrganizer, IsVolunteer
@@ -88,17 +88,27 @@ def _check_in_payload(ticket, result):
 # ── Attendee ───────────────────────────────────────────────────────────────
 
 @api_view(['POST'])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 @throttle_classes([RegistrationRateThrottle])
 def register_view(request, slug):
-    """POST /api/events/{slug}/register/ — register for an event."""
+    """
+    POST /api/events/{slug}/register/ — register for an event.
+
+    Requires an account. With no email delivery, the attendee's account *is*
+    how they reach their ticket, so a registration with nothing attached to it
+    would be a ticket its owner could never open again once they lost the link.
+    """
     event = get_object_or_404(Event.objects.filter(is_active=True), slug=slug)
 
     serializer = RegistrationCreateSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     try:
-        registration, order, instructions = register(event, **serializer.validated_data)
+        # Registering while signed in files the registration under that account
+        # so it shows up in "My tickets"; anonymous registration is unchanged.
+        registration, order, instructions = register(
+            event, user=request.user, **serializer.validated_data
+        )
     except TicketingError as exc:
         # Business-rule rejections are 409s, not 400s — the input was well formed,
         # the world just says no (sold out, closed, already registered).
@@ -116,7 +126,7 @@ def register_view(request, slug):
     return Response(
         {
             'success': True,
-            'message': 'Registration received.',
+            'message': 'Registration received. You can find it under My tickets.',
             'registration': RegistrationSerializer(registration, context={'request': request}).data,
             'payment': instructions.as_dict(),
         },
@@ -255,7 +265,7 @@ def resend_ticket_view(request, ticket_number):
         ),
         ticket_number=ticket_number,
     )
-    sent = deliver_ticket(ticket, base_url=_public_base_url(request))
+    sent = deliver_ticket(ticket, base_url=_public_base_url(request), force=True)
 
     return Response(
         {

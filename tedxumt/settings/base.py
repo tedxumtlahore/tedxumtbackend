@@ -45,6 +45,7 @@ THIRD_PARTY_APPS = [
 
 LOCAL_APPS = [
     'apps.common',
+    'apps.accounts',
     'apps.core',
     'apps.website',
     'apps.events',
@@ -170,6 +171,7 @@ REST_FRAMEWORK = {
         'submission': '10/hour',     # contact + application form POSTs
         'newsletter': '20/hour',
         'registration': '15/hour',   # event registration holds a seat, so cap it
+        'account': '10/hour',        # attendee signup — cheap to send, permanent for us
         'checkin': '2000/hour',      # a volunteer scans continuously on event day
     },
     'DEFAULT_PAGINATION_CLASS': 'apps.common.pagination.DefaultPagination',
@@ -194,6 +196,12 @@ SIMPLE_JWT = {
 # without a request to build absolute URLs from (admin actions, management
 # commands), so the public site's address has to be configured explicitly.
 TICKET_BASE_URL = env('TICKET_BASE_URL', default='http://localhost:5173')
+
+# Ticket delivery is through the attendee's account on the website, not email.
+# No SMTP is connected, so attempting to send would log an exception on every
+# confirmation for no benefit. Flip this to True once a mail provider exists;
+# `send_ticket_email` is unchanged and still wired to the admin resend action.
+TICKET_EMAIL_ENABLED = env.bool('TICKET_EMAIL_ENABLED', default=False)
 
 # ── CORS ───────────────────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = env.list(

@@ -22,6 +22,7 @@ from django.db import models
 from django.utils import timezone
 
 from apps.common.models import BaseModel, TimeStampedModel
+from apps.common.storages import private_media_storage
 
 
 def hash_identifier(raw):
@@ -87,6 +88,19 @@ class Registration(BaseModel):
     )
     public_ref = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
+    # Set when someone registers while signed in, or when they later claim the
+    # registration with its public_ref. Nullable because guest registration
+    # stays supported — an account must never become a prerequisite for
+    # attending. SET_NULL because deleting an account must not destroy a paid
+    # ticket: the registration, its order and its check-in log outlive it.
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name='registrations',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
     full_name = models.CharField(max_length=150)
     email = models.EmailField()
     phone = models.CharField(max_length=30)
@@ -122,6 +136,8 @@ class Registration(BaseModel):
         ]
         indexes = [
             models.Index(fields=['event', 'status']),
+            # /api/accounts/me/registrations/ filters on this on every load.
+            models.Index(fields=['user']),
         ]
 
     def set_cnic(self, raw):
@@ -185,6 +201,7 @@ class Order(TimeStampedModel):
     )
     payment_proof = models.ImageField(
         upload_to=payment_proof_path,
+        storage=private_media_storage,
         blank=True,
         help_text='Screenshot of the transfer. Staff-only — never exposed publicly.',
     )

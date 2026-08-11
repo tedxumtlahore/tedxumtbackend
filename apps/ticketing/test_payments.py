@@ -20,7 +20,7 @@ from apps.ticketing.services import TicketingError, mark_paid, register, submit_
 
 from apps.common.permissions import ORGANIZERS_GROUP
 
-from .tests import NO_THROTTLE, VALID, make_event, make_volunteer
+from .tests import NO_THROTTLE, VALID, make_attendee, make_event, make_volunteer
 
 TINY_GIF = (
     b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!'
@@ -95,6 +95,7 @@ class PaymentAccountAPITests(APITestCase):
         """
         make_account()
         event = make_event(title='Paid Event', ticket_price=Decimal('1500.00'))
+        self.client.force_authenticate(make_attendee())
 
         response = self.client.post(
             reverse('api-event-register', args=[event.slug]), VALID, format='json'
@@ -304,6 +305,8 @@ class RegistrationThrottleTests(APITestCase):
         SimpleRateThrottle.THROTTLE_RATES = {**self.original, 'registration': '3/hour'}
         SimpleRateThrottle.cache.clear()
         self.event = make_event(max_attendees=None)
+        # The cap is per account now, not per IP — see RegistrationRateThrottle.
+        self.client.force_authenticate(make_attendee())
 
     def tearDown(self):
         from rest_framework.throttling import SimpleRateThrottle

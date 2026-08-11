@@ -157,7 +157,8 @@ class RegistrationAdmin(admin.ModelAdmin):
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'attendee', 'event', 'provider', 'status', 'amount', 'paid_at', 'confirmed_by',
+        'id', 'attendee', 'event', 'provider', 'status', 'ticket_issued',
+        'amount', 'paid_at', 'confirmed_by',
     ]
     list_display_links = ['id', 'attendee']
     list_filter = ['status', 'provider', 'created_at']
@@ -165,8 +166,18 @@ class OrderAdmin(admin.ModelAdmin):
     list_select_related = ['registration', 'registration__event', 'confirmed_by']
     date_hierarchy = 'created_at'
     ordering = ['-created_at']
+    actions = ['confirm_payment']
+
+    # `status` is deliberately read-only.
+    #
+    # Editing the dropdown writes the column directly and never calls
+    # `mark_paid()`, which is the only path that issues a ticket. That leaves an
+    # order reading "Paid" with no ticket behind it, `paid_at` and
+    # `confirmed_by` empty, and an attendee who is told they are confirmed but
+    # has nothing to show at the door. Use the "Confirm payment" action, which
+    # goes through the service and records who did it.
     readonly_fields = [
-        'registration', 'provider', 'amount', 'currency', 'idempotency_key',
+        'registration', 'provider', 'status', 'amount', 'currency', 'idempotency_key',
         'paid_at', 'confirmed_by', 'raw_payload', 'created_at', 'updated_at',
     ]
 
@@ -180,6 +191,55 @@ class OrderAdmin(admin.ModelAdmin):
     @admin.display(description='Event')
     def event(self, obj):
         return obj.registration.event.title
+
+    @admin.display(description='Ticket', boolean=True)
+    def ticket_issued(self, obj):
+        """
+        Surfaces the mismatch that used to be invisible: an order marked paid
+        with no ticket behind it.
+        """
+        return hasattr(obj.registration, 'ticket')
+
+    @admin.action(description='Confirm payment and issue ticket')
+    def confirm_payment(self, request, queryset):
+        """Same human step as on Registrations, for organizers working from Orders."""
+        issued, repaired, skipped, failed = 0, 0, 0, 0
+
+        for order in queryset.select_related('registration'):
+            has_ticket = hasattr(order.registration, 'ticket')
+            if order.is_paid and has_ticket:
+                skipped += 1
+                continue
+            # A paid order with no ticket is the damage the old editable
+            # dropdown caused. Re-run the service to issue what is missing.
+            was_broken = order.is_paid and not has_ticket
+            try:
+                mark_paid(order, confirmed_by=request.user)
+            except TicketingError as exc:
+                failed += 1
+                self.message_user(
+                    request,
+                    f'{order.registration.full_name}: {exc.message}',
+                    level=messages.ERROR,
+                )
+                continue
+            if was_broken:
+                repaired += 1
+            else:
+                issued += 1
+
+        if issued:
+            self.message_user(request, f'{issued} payment(s) confirmed and ticket(s) issued.')
+        if repaired:
+            self.message_user(
+                request,
+                f'{repaired} order(s) were marked paid without a ticket — now issued.',
+                level=messages.WARNING,
+            )
+        if skipped:
+            self.message_user(request, f'{skipped} already paid — left alone.', level=messages.WARNING)
+        if failed and not (issued or repaired):
+            self.message_user(request, 'No payments were confirmed.', level=messages.ERROR)
 
 
 @admin.register(Ticket)
@@ -227,7 +287,9 @@ class TicketAdmin(admin.ModelAdmin):
         """Email delivery is best effort, so organizers need a retry button."""
         sent, failed = 0, 0
         for ticket in queryset.select_related('registration', 'registration__event'):
-            if deliver_ticket(ticket):
+            # force: an organizer asking for a resend means it, whatever the
+            # default delivery channel is.
+            if deliver_ticket(ticket, force=True):
                 sent += 1
             else:
                 failed += 1

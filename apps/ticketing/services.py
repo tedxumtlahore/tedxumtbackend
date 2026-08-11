@@ -53,7 +53,7 @@ def _release_expired_holds(event):
 
 @transaction.atomic
 def register(event, *, full_name, email, phone, cnic='', university='',
-             occupation='', base_url=None):
+             occupation='', base_url=None, user=None):
     """
     Create a registration and its order.
 
@@ -100,6 +100,10 @@ def register(event, *, full_name, email, phone, cnic='', university='',
         university=(university or '').strip(),
         occupation=(occupation or '').strip(),
         hold_expires_at=hold_expires_at,
+        # Only ever the authenticated caller. Never resolved from the submitted
+        # email — that would let anyone attach a stranger's registration to
+        # their own account by typing their address.
+        user=user if (user is not None and user.is_authenticated) else None,
     )
     registration.cnic_hash = cnic_hash
     registration.cnic_last4 = cnic_last4
@@ -135,26 +139,44 @@ def mark_paid(order, *, reference='', confirmed_by=None, payload=None, base_url=
     Idempotent: confirming an already-paid order returns the existing ticket
     rather than issuing a second one, so a double-clicked admin action or a
     replayed webhook cannot mint duplicates.
+
+    Self-healing: an order that reads PAID but has no ticket is finished rather
+    than returned as-is. That state is reachable whenever the status column is
+    written directly instead of through here — an editable admin dropdown, a
+    data migration, a manual SQL fix — and handing back None would leave
+    somebody who has actually paid with nothing to show at the door.
     """
     locked_order = Order.objects.select_for_update().get(pk=order.pk)
 
     if locked_order.status == Order.Status.PAID:
-        return Ticket.objects.filter(registration=locked_order.registration).first()
-
-    if locked_order.status in {Order.Status.CANCELLED, Order.Status.REFUNDED}:
+        existing = Ticket.objects.filter(registration=locked_order.registration).first()
+        if existing is not None:
+            return existing
+        logger.warning(
+            'Order %s is marked paid but has no ticket — issuing one now.', locked_order.pk
+        )
+    elif locked_order.status in {Order.Status.CANCELLED, Order.Status.REFUNDED}:
         raise TicketingError(
             'This order can no longer be paid.', code='order_not_payable'
         )
+    else:
+        locked_order.status = Order.Status.PAID
+        locked_order.paid_at = timezone.now()
+        if reference:
+            locked_order.reference = reference
+        if confirmed_by is not None:
+            locked_order.confirmed_by = confirmed_by
+        if payload:
+            locked_order.raw_payload = payload
+        locked_order.save()
 
-    locked_order.status = Order.Status.PAID
-    locked_order.paid_at = timezone.now()
-    if reference:
-        locked_order.reference = reference
-    if confirmed_by is not None:
-        locked_order.confirmed_by = confirmed_by
-    if payload:
-        locked_order.raw_payload = payload
-    locked_order.save()
+    # Reached both by a fresh confirmation and by the repair path above, so a
+    # half-settled order ends up in exactly the same state as a clean one.
+    if not locked_order.paid_at:
+        locked_order.paid_at = timezone.now()
+        if confirmed_by is not None:
+            locked_order.confirmed_by = confirmed_by
+        locked_order.save(update_fields=['paid_at', 'confirmed_by', 'updated_at'])
 
     registration = locked_order.registration
     registration.status = Registration.Status.CONFIRMED
@@ -288,8 +310,24 @@ def issue_ticket(registration, *, send_email=True, base_url=None):
     return ticket
 
 
-def deliver_ticket(ticket, *, base_url=None):
-    """Email a ticket to its attendee. Best effort; never raises."""
+def deliver_ticket(ticket, *, base_url=None, force=False):
+    """
+    Email a ticket to its attendee. Best effort; never raises.
+
+    Skipped entirely unless `TICKET_EMAIL_ENABLED`, because delivery currently
+    happens through the attendee's account on the website. `force=True` is what
+    the admin's explicit resend action passes — if an organizer deliberately
+    asks for an email, they get the attempt regardless of the default.
+    """
+    from django.conf import settings
+
+    if not force and not getattr(settings, 'TICKET_EMAIL_ENABLED', False):
+        logger.info(
+            'Ticket %s issued; email skipped (TICKET_EMAIL_ENABLED is off).',
+            ticket.ticket_number,
+        )
+        return False
+
     from .emails import send_ticket_email
 
     return send_ticket_email(ticket, base_url=base_url)

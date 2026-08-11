@@ -64,6 +64,68 @@ def make_event(**overrides):
     return Event.objects.create(**defaults)
 
 
+class PaidWithoutTicketRepairTests(TestCase):
+    """
+    An order whose status column was written directly, bypassing `mark_paid`.
+
+    Reachable from an editable admin dropdown, a data migration, or a manual SQL
+    fix. The old code returned None here and left a paying attendee with no
+    ticket; `mark_paid` now finishes the job instead.
+    """
+
+    def setUp(self):
+        self.event = make_event()
+        self.registration, self.order, _ = register(self.event, **VALID)
+
+    def _corrupt(self):
+        """Exactly what the admin dropdown used to do: set the column, nothing else."""
+        Order.objects.filter(pk=self.order.pk).update(status=Order.Status.PAID)
+        Ticket.objects.filter(registration=self.registration).delete()
+        self.order.refresh_from_db()
+
+    def test_paid_order_with_no_ticket_gets_one(self):
+        self._corrupt()
+        self.assertFalse(Ticket.objects.filter(registration=self.registration).exists())
+
+        ticket = mark_paid(self.order)
+
+        self.assertIsNotNone(ticket, 'must not hand back None to a paying attendee')
+        self.assertTrue(Ticket.objects.filter(registration=self.registration).exists())
+
+    def test_repair_also_fixes_the_registration_and_paid_at(self):
+        self._corrupt()
+        Registration.objects.filter(pk=self.registration.pk).update(
+            status=Registration.Status.PENDING
+        )
+
+        mark_paid(self.order)
+
+        self.registration.refresh_from_db()
+        self.order.refresh_from_db()
+        self.assertEqual(self.registration.status, Registration.Status.CONFIRMED)
+        self.assertIsNotNone(self.order.paid_at, 'paid_at must be backfilled')
+
+    def test_a_healthy_paid_order_is_untouched(self):
+        """Idempotency must survive the repair path — no second ticket, ever."""
+        original = Ticket.objects.get(registration=self.registration)
+
+        again = mark_paid(self.order)
+
+        self.assertEqual(again.pk, original.pk)
+        self.assertEqual(Ticket.objects.filter(registration=self.registration).count(), 1)
+
+
+def make_attendee(username='attendee@example.com'):
+    """
+    A plain signed-in visitor: no staff flag, no groups.
+
+    Registration requires an account now, so API tests that post to the register
+    endpoint need one. Deliberately privilege-free, so these tests cannot pass
+    by accident on the strength of some other permission.
+    """
+    return get_user_model().objects.create_user(username=username, password='x' * 20)
+
+
 def make_volunteer(username='vol', group=VOLUNTEERS_GROUP):
     user = get_user_model().objects.create_user(username=username, password='x' * 20)
     user.groups.add(Group.objects.get(name=group))
@@ -411,6 +473,18 @@ class RegistrationAPITests(APITestCase):
     def setUp(self):
         self.event = make_event()
         self.url = reverse('api-event-register', args=[self.event.slug])
+        self.client.force_authenticate(make_attendee())
+
+    def test_registration_requires_an_account(self):
+        """
+        Without email delivery the account is the only durable route back to a
+        ticket, so an anonymous registration would be unreachable by its owner.
+        """
+        self.client.force_authenticate(None)
+        response = self.client.post(self.url, VALID, format='json')
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Registration.objects.exists(), 'nothing may be written')
 
     def test_registering_returns_the_ticket_reference(self):
         response = self.client.post(self.url, VALID, format='json')
@@ -617,6 +691,7 @@ class ClientCannotAssertPaymentTests(APITestCase):
     def setUp(self):
         self.event = make_event(title='Paid Event', ticket_price=Decimal('2500.00'))
         self.url = reverse('api-event-register', args=[self.event.slug])
+        self.client.force_authenticate(make_attendee())
 
     def test_posting_a_paid_status_does_not_pay_the_order(self):
         response = self.client.post(

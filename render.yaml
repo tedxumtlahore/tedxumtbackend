@@ -1,0 +1,97 @@
+# Render blueprint for the TEDxUMT API.
+#
+# The database is NOT declared here — it lives on Supabase, so DATABASE_URL is
+# set by hand. Everything marked `sync: false` must be filled in from the Render
+# dashboard; nothing secret belongs in a file that is committed to git.
+
+services:
+  - type: web
+    name: tedxumt-api
+    runtime: python
+    # Free instances sleep after ~15 minutes idle and take roughly a minute to
+    # wake. That is a broken first page load for every visitor after a quiet
+    # spell, and a stalled scanner when the doors open. Starter removes it.
+    plan: starter
+    # Must match the Supabase project's region. A database one ocean away costs
+    # a round trip on every query, several times per request.
+    region: singapore
+    healthCheckPath: /api/health/
+
+    buildCommand: >-
+      pip install -r requirements.txt &&
+      python manage.py collectstatic --noinput &&
+      python manage.py migrate
+
+    # One worker on purpose: DRF counts throttle hits in Django's per-process
+    # LocMemCache, so N workers multiply the 15/hour registration cap by N.
+    # At ~100 tickets one worker has ample headroom.
+    startCommand: >-
+      gunicorn tedxumt.wsgi:application
+      --bind 0.0.0.0:$PORT
+      --workers 1
+      --timeout 120
+
+    envVars:
+      # ── The one that matters most ────────────────────────────────────────
+      # wsgi.py falls back to the DEVELOPMENT settings module. Without this
+      # line the deploy comes up with DEBUG=True, serving tracebacks that
+      # include settings and source to anyone who triggers a 500.
+      - key: DJANGO_SETTINGS_MODULE
+        value: tedxumt.settings.production
+
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DEBUG
+        value: "False"
+      - key: SECRET_KEY
+        generateValue: true
+
+      # ── Hosts and origins ────────────────────────────────────────────────
+      - key: ALLOWED_HOSTS
+        sync: false          # tedxumt-api.onrender.com
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false          # https://<project>.vercel.app
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false          # the Vercel origin AND the Render origin
+
+      # Where QR codes and "view your ticket" links point. This is the PUBLIC
+      # SITE, not the API — the API has no /checkin route, so pointing this at
+      # the Render domain scans every ticket to a 404.
+      - key: TICKET_BASE_URL
+        sync: false          # https://<project>.vercel.app
+
+      # ── Database (Supabase) ──────────────────────────────────────────────
+      # Use the SESSION pooler connection string. The direct connection is
+      # IPv6-only, and transaction-mode pooling is the wrong shape for
+      # long-running transactions like loaddata.
+      - key: DATABASE_URL
+        sync: false
+
+      # ── Media (Supabase Storage, S3-compatible) ──────────────────────────
+      - key: MEDIA_BUCKET
+        sync: false          # e.g. "media" — must be a PUBLIC bucket
+      - key: PRIVATE_MEDIA_BUCKET
+        sync: false          # e.g. "payment-proofs" — must be PRIVATE
+      - key: S3_ENDPOINT_URL
+        sync: false          # https://<ref>.storage.supabase.co/storage/v1/s3
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+
+      # ── Email ────────────────────────────────────────────────────────────
+      # DEFAULT_FROM_EMAIL must match the authenticated sending account or
+      # tickets land in spam, which at this scale means people at the door
+      # insisting they never got one.
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false

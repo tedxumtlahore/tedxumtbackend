@@ -1,7 +1,10 @@
 # TEDxUMT Backend Development Roadmap
 
-Status: **all phases complete.** 120 backend tests passing; frontend builds clean
-and every route is wired to the API.
+Status: **CMS complete; ticketing complete (Stages 1-5).** 252 backend tests
+passing; frontend builds clean and every route is wired to the API.
+
+Scale: the event sells roughly **100 tickets**. That retires several concerns
+below — see the notes against each.
 
 ## Phase 0 — Foundation
 
@@ -203,6 +206,118 @@ Also: About, Home, Sponsors, and the Apply page's three application tracks.
 
 ---
 
+# Phase 13 — Ticketing, Registration & Check-in (TicketPRD.md)
+
+## Stage 1 — core backend ✅
+
+- [x] Event ticketing fields (price, currency, registration window, hold, prefix)
+- [x] Registration, Order, Ticket, TicketSequence, CheckInLog
+- [x] Payment provider abstraction — free + manual bank transfer
+- [x] Volunteers / Organizers groups, `IsVolunteer` / `IsOrganizer`
+- [x] JWT for the scanner (alongside session auth, with token blacklist)
+- [x] Registration, payment, ticket, check-in verify/perform, history endpoints
+- [x] Admin with audited "Confirm payment and issue ticket" action
+- [x] 61 tests covering the five correctness properties + PRD edge cases
+
+Deliberate deviations from the PRD, and why:
+
+1. **No public `GET /api/ticket/{ticket_number}`.** Ticket numbers are
+   sequential, so that endpoint would let anyone enumerate the attendee list.
+   The attendee reads their ticket at `/api/tickets/by-token/{access_token}/`.
+2. **CNIC is hashed, not stored.** A salted hash enforces the duplicate rule and
+   the last four digits allow an ID check at the door.
+3. **No live payment gateway.** A provider abstraction with free and
+   manual-transfer implementations; a real gateway is one class plus a signed
+   webhook.
+
+## Stage 2 — ticket delivery ✅
+
+- [x] QR image generation (`qrcode`), served at `/qr.png`
+- [x] Printable PDF ticket (`reportlab`), ticket-sized rather than A4
+- [x] Email on issue via `transaction.on_commit`, failure-tolerant
+- [x] "Resend ticket" admin action and organizer endpoint
+- [x] 23 further tests
+
+Notes:
+
+- **Nothing is stored.** QR and PDF are rendered per request. A stored PDF on
+  an ephemeral filesystem would vanish on deploy and 404 at the door.
+- **QR quiet zone is 4 modules**, the spec minimum. Measured: a 2- or 3-module
+  border fails to decode. `QR_QUIET_ZONE` guards this with a test.
+- **Email is best effort.** A dead SMTP server logs and moves on; the ticket
+  still exists and is viewable online. Resend is the retry path.
+- **Delivery is synchronous** — there is no queue. Fine for one event's volume;
+  move behind Celery before a large on-sale.
+
+## Stage 3 — attendee & volunteer frontend ✅
+
+- [x] Registration form at `/events/<slug>/register`, linked from the event page
+- [x] Ticket page at `/ticket/<access_token>` with QR and PDF download
+- [x] Volunteer scanner at `/checkin` (and `/checkin/<token>` from a scanned QR)
+- [x] JWT sign-in with shared-refresh handling
+
+PRD edge cases handled in the UI:
+
+- **Camera permission denied** — a manual entry box is always present, and the
+  denial is explained rather than leaving a dead black rectangle.
+- **Volunteer loses internet** — scans queue in `localStorage` and replay on
+  reconnect. A refused ticket is a resolved outcome and is dropped rather than
+  retried forever.
+- **Repeated decodes** — the camera fires continuously, so the same code is
+  ignored for 3 seconds after a scan.
+- **A refused scan still shows the attendee.** The 409 carries the name and
+  ticket number, which is exactly what a volunteer needs to explain a refusal
+  to the person in front of them.
+
+## Stage 5 — manual payment, done properly ✅
+
+- [x] `PaymentAccount` — configurable Easypaisa / JazzCash / bank accounts
+- [x] Registration instructions now actually carry the account details
+- [x] `payment-proof` endpoint: transaction ID, sending number, screenshot
+- [x] `/registration/<public_ref>` page: accounts, "I've paid" form, live status
+- [x] Admin shows the sending number and screenshot beside each pending order
+- [x] 18 further tests
+
+Why this exists rather than a payment gateway: at ~100 tickets, a gateway costs
+merchant onboarding and 2–3% in fees to save a couple of hours of human effort.
+Manual confirmation also has no failure mode worse than a one-day wait, whereas
+untested payment code fails by taking money without delivering.
+
+Notes:
+
+- **Reporting a transfer is not paying.** The proof endpoint never advances the
+  order; only an organizer checking the statement does. Tested explicitly.
+- **The sending number is the matching key.** Easypaisa and JazzCash P2P
+  transfers cannot carry a reference note, so a generated code is invisible on
+  the statement. The number the money came from is what actually matches.
+- **Screenshots get randomised filenames.** These images usually show the
+  sender's balance and history; a predictable path would be a guessable URL.
+- **Fixed a 404**: registering for a paid event navigated to
+  `/registration/<ref>`, a route that did not exist.
+
+## Stage 4 — organizer dashboard ✅
+
+- [x] `/api/dashboard/` — capacity, registrations, door counts, money, arrivals
+- [x] `/api/analytics/` — dense daily series
+- [x] `/api/registrations/export/` — attendee CSV
+- [x] `/organizer` page: live stats refreshing every 15s, event picker, CSV button
+- [x] 19 further tests
+
+Notes:
+
+- **The export is an allow-list.** `EXPORT_COLUMNS` excludes the CNIC hash and
+  both ticket tokens — a spreadsheet carrying a scan token is working door
+  access sitting in a downloads folder. A test asserts the exclusions so a new
+  model field cannot silently join the file.
+- **A failed background poll keeps the last good numbers on screen** rather than
+  blanking the dashboard someone is watching mid-event.
+- **The chart is hand-rolled.** Fourteen bars did not justify a charting
+  dependency larger than the rest of the dashboard.
+- **Money is quantized.** `Sum()` drops the decimal scale on SQLite, which
+  showed a total of "1500" beside a price of "1500.00".
+
+---
+
 # Known gaps before going live
 
 1. **Media storage.** Uploads go to local disk. On a platform with an ephemeral
@@ -215,3 +330,18 @@ Also: About, Home, Sponsors, and the Apply page's three application tracks.
    before an event is scheduled.
 4. **No caching layer.** Fine at current traffic; add per-view caching on the
    page-shaped endpoints if load becomes a concern.
+5. **Throttling is per-process.** DRF counts against Django's default
+   `LocMemCache`, so under gunicorn the registration limit multiplies by worker
+   count. *At ~100 tickets a single worker is ample, so this is not a launch
+   blocker* — it becomes one only if the site is scaled out.
+6. **`select_for_update` is a no-op on SQLite.** The oversell guard leans on
+   SQLite's database-wide write lock instead. *At this scale SQLite is genuinely
+   adequate*, and the write lock does serialise the capacity check. Worth
+   re-verifying on PostgreSQL only if the event grows or registration opens with
+   a rush on the last few seats.
+7. **No task queue.** Email is synchronous. *At ~100 tickets spread over days
+   this is a non-issue*; Celery only matters for a large simultaneous on-sale.
+8. **Seeded content is fictional.** The speakers and sponsors from
+   `seed_content` are placeholders carried over from the prototype. Replace or
+   clear them before the site is public — publishing invented sponsors implies
+   relationships that do not exist.

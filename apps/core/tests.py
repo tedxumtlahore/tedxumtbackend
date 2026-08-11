@@ -1,7 +1,8 @@
-from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
+
+from apps.common.testing import login_as_staff
 
 from .models import SocialLink, NavigationItem, FAQ, WebsiteSettings
 from .serializers import SocialLinkSerializer, NavigationItemSerializer, FAQSerializer
@@ -101,8 +102,7 @@ class CoreAPITests(APITestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_staff_can_edit_site_settings(self):
-        get_user_model().objects.create_superuser('cms', 'cms@example.com', 'pw-strong-123')
-        self.client.login(username='cms', password='pw-strong-123')
+        login_as_staff(self.client, 'cms')
 
         response = self.client.patch(
             '/api/website-settings/', {'tagline': 'Ideas Worth Spreading, Lahore'}, format='json'

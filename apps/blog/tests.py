@@ -1,9 +1,9 @@
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
 from apps.common.models import StatusChoices
+from apps.common.testing import login_as_staff
 
 from .models import BlogPost, Category, Tag
 
@@ -84,8 +84,7 @@ class BlogAPITests(APITestCase):
         self.assertEqual(len(titles), 2)
 
     def test_staff_can_preview_drafts(self):
-        get_user_model().objects.create_superuser('editor', 'e@example.com', 'pw-strong-123')
-        self.client.login(username='editor', password='pw-strong-123')
+        login_as_staff(self.client, 'editor')
 
         response = self.client.get('/api/blog-posts/')
 

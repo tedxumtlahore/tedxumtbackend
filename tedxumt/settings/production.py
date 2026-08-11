@@ -24,16 +24,67 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # ── Static files ───────────────────────────────────────────────────────────
 # WhiteNoise lets gunicorn serve the admin's CSS without a separate web server.
-# Uncomment the dependency in requirements.txt to enable it.
 try:
     import whitenoise  # noqa: F401
 except ImportError:
-    pass
+    _STATIC_BACKEND = 'django.contrib.staticfiles.storage.StaticFilesStorage'
 else:
     MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')  # noqa: F405
+    _STATIC_BACKEND = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# ── Media files (object storage) ───────────────────────────────────────────
+# Render, Heroku and friends have an ephemeral filesystem: every deploy throws
+# away whatever was written to disk. That would silently destroy the gallery
+# and — worse — the payment screenshots that are the evidence trail for who
+# actually paid. Uploads therefore go to S3-compatible object storage.
+#
+# Two buckets, because the two kinds of upload have opposite exposure needs.
+# See apps/common/storages.py. Setting MEDIA_BUCKET switches this on; without
+# it the settings fall back to local disk, which is correct for a single-box
+# deployment with a real persistent volume.
+MEDIA_BUCKET = env('MEDIA_BUCKET', default='')
+
+if MEDIA_BUCKET:
+    _S3_BASE = {
+        'access_key': env('S3_ACCESS_KEY_ID'),
+        'secret_key': env('S3_SECRET_ACCESS_KEY'),
+        'endpoint_url': env('S3_ENDPOINT_URL'),
+        'region_name': env('S3_REGION', default='us-east-1'),
+        # Supabase (and most S3-compatible services that are not AWS) serve
+        # buckets as a path, not as a subdomain of the endpoint.
+        'addressing_style': 'path',
+        # Object ACLs are an AWS concept; Supabase Storage rejects them.
+        # Public vs private is a property of the bucket itself there.
+        'default_acl': None,
+        # Never let a second upload silently replace the first.
+        'file_overwrite': False,
+    }
+
+    STORAGES = {
+        # Public bucket: gallery, portraits, logos, blog covers. These are
+        # meant to be seen, so URLs are unsigned and therefore cacheable.
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': {**_S3_BASE, 'bucket_name': MEDIA_BUCKET, 'querystring_auth': False},
+        },
+        # Private bucket: payment proofs only. URLs are signed and expire, so a
+        # leaked link stops working — these screenshots show the sender's
+        # balance and transaction history.
+        'private': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': {
+                **_S3_BASE,
+                'bucket_name': env('PRIVATE_MEDIA_BUCKET', default=f'{MEDIA_BUCKET}-private'),
+                'querystring_auth': True,
+                'querystring_expire': env.int('PRIVATE_URL_EXPIRY', default=600),
+            },
+        },
+        'staticfiles': {'BACKEND': _STATIC_BACKEND},
+    }
+else:
     STORAGES = {
         'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
-        'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+        'staticfiles': {'BACKEND': _STATIC_BACKEND},
     }
 
 # ── Email ──────────────────────────────────────────────────────────────────

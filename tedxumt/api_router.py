@@ -15,6 +15,7 @@ urlpatterns = [
     path('health/', views.health_view, name='api-health'),
 
     path('', include('apps.common.urls')),
+    path('', include('apps.accounts.urls')),
     path('', include('apps.core.urls')),
     path('', include('apps.website.urls')),
     path('', include('apps.events.urls')),
@@ -24,4 +25,5 @@ urlpatterns = [
     path('', include('apps.blog.urls')),
     path('', include('apps.sponsors.urls')),
     path('', include('apps.applications.urls')),
+    path('', include('apps.ticketing.urls')),
 ]

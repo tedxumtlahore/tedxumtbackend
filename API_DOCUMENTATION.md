@@ -8,16 +8,20 @@ Base URL (development): `http://127.0.0.1:8000/api/`
 
 ## Conventions
 
-**Authentication.** Session authentication only. The public site never
-authenticates — it reads content anonymously and posts to the form endpoints.
-Organizers sign in at `/admin/`; that same session authorises API writes.
+**Authentication.** Two schemes, both accepted everywhere. Session auth drives
+the CMS — organizers sign in at `/admin/` and that session authorises API
+writes. JWT (`/api/auth/token/`) exists for the volunteer check-in scanner,
+which runs on a phone with no session cookie. The public site authenticates for
+neither: it reads content anonymously and posts to the form endpoints.
 
 **Permissions.**
 
 | Class | Behaviour | Used by |
 |---|---|---|
 | `IsStaffOrReadOnly` | Anyone reads, only staff writes | All content endpoints |
-| `CreateOnlyOrStaff` | Anyone POSTs, only staff reads/edits | All submission endpoints |
+| `CreateOnlyOrStaff` | Anyone POSTs, only staff reads/edits | Submission endpoints |
+| `IsVolunteer` | Volunteers group, or staff | Check-in endpoints |
+| `IsOrganizer` | Organizers group, or staff | Ticketing collections |
 
 **Pagination.** List endpoints return
 `{"count": N, "next": url, "previous": url, "results": [...]}`.
@@ -52,8 +56,10 @@ hidden from the public but visible to a signed-in staff user, so organizers can
 preview unpublished content through the same endpoints.
 
 **Throttling.** 1000 requests/hour anonymous, 5000/hour authenticated.
-Form submissions are limited to 10/hour and newsletter signups to 20/hour per IP;
-staff are exempt.
+Form submissions are limited to 10/hour, newsletter signups to 20/hour, and
+event registration to 15/hour per IP; staff are exempt. Check-in is capped at
+2000/hour per volunteer — high enough for a full event day, low enough to bound
+a compromised account.
 
 ---
 
@@ -221,3 +227,123 @@ Every image field returns an **absolute** URL built from the incoming request
 (e.g. `http://127.0.0.1:8000/media/gallery/images/TEDx.jpg`), so the frontend can
 use the value directly without joining paths. Fields with no upload return `null`
 — the frontend substitutes a placeholder.
+
+---
+
+## Ticketing, registration & check-in
+
+Added by the ticketing module. The existing `Event` gained ticketing fields
+rather than a second event table being introduced — `max_attendees` is the
+capacity, and `title`/`venue`/`start_datetime` were already there.
+
+### Attendee (public)
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/api/events/{slug}/ticketing/` | Price, capacity, seats remaining, whether registration is open and why not |
+| POST | `/api/events/{slug}/register/` | `full_name`, `email`, `phone` required; `cnic`, `university`, `occupation` optional |
+| GET | `/api/payment-accounts/` | Where to send money — Easypaisa / JazzCash / bank |
+| GET | `/api/registrations/status/{public_ref}/` | The attendee's own status, by unguessable UUID |
+| POST | `/api/registrations/status/{public_ref}/payment-proof/` | "I've paid" — transaction ID, sending number, optional screenshot |
+| GET | `/api/tickets/by-token/{access_token}/` | The attendee's ticket, including the QR payload |
+| GET | `/api/tickets/by-token/{access_token}/qr.png` | The QR image itself, rendered on demand |
+| GET | `/api/tickets/by-token/{access_token}/pdf/` | The printable PDF ticket |
+
+Registration returns `201` with the registration and a `payment` block:
+
+```json
+{
+  "success": true,
+  "registration": { "ticket_number": "TEDX2026-0001", "ticket_access_token": "…" },
+  "payment": { "kind": "none|instructions|redirect", "message": "…", "details": {} }
+}
+```
+
+Business-rule rejections return **409**, not 400 — the input was well formed,
+the world said no. `code` distinguishes them: `duplicate_email`,
+`duplicate_cnic`, `registration_closed`.
+
+### Volunteer (requires the Volunteers group)
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| POST | `/api/auth/token/` | Obtain a JWT pair. Also `token/refresh/`, `token/verify/` |
+| POST | `/api/checkin/verify/` | Read-only lookup — shows the attendee without consuming the ticket |
+| POST | `/api/checkin/` | Verify **and** consume. 200 when allowed, 409 otherwise |
+| GET | `/api/checkin/history/` | This volunteer's last 50 scans |
+
+Both check-in endpoints accept either the bare `qr_token` or the full URL the QR
+encodes. Results: `allowed`, `duplicate`, `invalid`, `unpaid`, `wrong_event`,
+`cancelled`. Pass `event=<slug>` to scope a door to one event.
+
+### Organizer (requires the Organizers group)
+
+`POST /api/tickets/{ticket_number}/resend/` re-sends a ticket email.
+
+Read-only: `/api/registrations/`, `/api/orders/`, `/api/tickets/`,
+`/api/check-in-logs/`. All support `?search=`, `?ordering=`, and
+`?event_slug=`. State changes happen through the admin's audited actions, never
+through a PATCH.
+
+### Design notes worth knowing
+
+**No public lookup by ticket number.** Ticket numbers are sequential, so a
+public endpoint keyed on them would let anyone enumerate the attendee list. The
+PRD's `GET /api/ticket/{ticket_number}` is served instead at
+`/api/tickets/by-token/{access_token}/`.
+
+**Two tokens per ticket.** `qr_token` is what the door scanner accepts;
+`access_token` is what the attendee's page uses. A shared screenshot of a ticket
+page URL therefore does not hand over the value that opens the door.
+
+**CNIC is never stored.** A salted hash enforces one-registration-per-person and
+the last four digits let a volunteer eye-match an ID card. The number itself is
+accepted, hashed, and discarded.
+
+**Ticket numbers.** `TEDX{year}-0001`, per event. A second event in the same
+year gets `TEDX{year}-2-0001`, since the year-derived prefix alone would
+collide. Set `Event.ticket_prefix` for something specific.
+
+**Payment.** A provider abstraction with two implementations: free events settle
+instantly, priced events use bank transfer confirmed by an organizer in the
+admin. Registering for a priced event returns the configured payment accounts
+alongside the amount.
+
+**Reporting a transfer is not paying.** `payment-proof` records the attendee's
+transaction ID, the number they sent from, and an optional screenshot — then
+stops. The order stays unpaid until an organizer checks the statement. Easypaisa
+and JazzCash P2P transfers cannot carry a reference note, so the *sending
+number* is the practical matching key; it is surfaced in the admin list beside
+each pending registration. Screenshots are stored under randomised filenames
+because they typically show the sender's balance, and their URL is never
+serialized publicly. A real gateway is one class plus a signed webhook, with no changes to
+registration, tickets, or check-in. Nothing a client sends can mark an order
+paid.
+
+**Delivery.** The ticket email goes out on `transaction.on_commit`, so it is
+only sent once the ticket is durably saved, and a mail failure is logged rather
+than raised — a dead SMTP server must not roll back a paid registration. QR and
+PDF are generated per request and never written to disk, so a deploy on an
+ephemeral filesystem cannot destroy an issued ticket. `TICKET_BASE_URL`
+configures the public address the QR and ticket links point at.
+
+### Organizer dashboard
+
+All organizer-only. `?event=<slug>` selects the event; omitting it uses the
+soonest upcoming one, which is what an organizer means on event day.
+
+| Method | Endpoint | Notes |
+|---|---|---|
+| GET | `/api/dashboard/` | Capacity, registrations, door counts, money, recent arrivals |
+| GET | `/api/analytics/?days=30` | Dense daily series (gaps filled with zeros), 1–180 days |
+| GET | `/api/registrations/export/` | Attendee list as CSV |
+
+The export's columns are an explicit allow-list (`EXPORT_COLUMNS` in
+`apps/ticketing/dashboard.py`). It deliberately excludes `cnic_hash`,
+`qr_token`, `access_token`, and `public_ref` — a downloaded spreadsheet
+containing a scan token would be working door access sitting in someone's
+downloads folder. `cnic_last4` *is* included, for the ID check at the door.
+
+Money is quantized to two decimal places: `Sum()` over a DecimalField loses the
+field's scale on SQLite, which would otherwise show a total of "1500" beside a
+price of "1500.00".

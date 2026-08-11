@@ -1,0 +1,19 @@
+Hi {{ attendee_name }},
+
+You're in. Here is your ticket for {{ event.title }}.
+
+Ticket number: {{ ticket_number }}
+{% if event_start %}When: {{ event_start|date:"l, j F Y" }} at {{ event_start|date:"g:i A" }}
+{% endif %}{% if venue %}Where: {{ venue.name }}{% if venue.address %}, {{ venue.address }}{% endif %}
+{% endif %}
+Your ticket is attached as a PDF. You can also open it here:
+{{ ticket_url }}
+
+At the entrance, show the QR code on the ticket. It is scanned once and admits
+one person, so please don't share it. Bring photo ID.
+
+See you there,
+The {{ site_name }} team
+
+--
+This independent TEDx event is operated under license from TED.

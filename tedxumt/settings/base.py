@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent  # tedxumt_backend/
 # ── Environment ────────────────────────────────────────────────────────────
 env = environ.Env(
     DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1']),
+    ALLOWED_HOSTS=(list, ['localhost', '127.0.0.1', "tedxumtbackend.onrender.com"]),
 )
 environ.Env.read_env(BASE_DIR / '.env')
 
@@ -206,7 +206,7 @@ TICKET_EMAIL_ENABLED = env.bool('TICKET_EMAIL_ENABLED', default=False)
 # ── CORS ───────────────────────────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = env.list(
     'CORS_ALLOWED_ORIGINS',
-    default=['http://localhost:5173', 'http://127.0.0.1:5173'],
+    default=['http://localhost:5173', 'http://127.0.0.1:5173', 'https://tedxumtbackend.onrender.com'],
 )
 CORS_ALLOW_CREDENTIALS = False
 

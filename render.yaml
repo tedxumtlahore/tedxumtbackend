@@ -68,18 +68,28 @@ services:
         sync: false
 
       # ── Media (Supabase Storage, S3-compatible) ──────────────────────────
+      # Without MEDIA_BUCKET uploads go to Render's disk, which is wiped on
+      # every deploy — and Django does not serve MEDIA_URL when DEBUG=False,
+      # so those URLs 404 immediately rather than at the next deploy.
       - key: MEDIA_BUCKET
-        sync: false          # e.g. "media" — must be a PUBLIC bucket
+        sync: false          # "tedx-media" — must be a PUBLIC bucket
       - key: PRIVATE_MEDIA_BUCKET
-        sync: false          # e.g. "payment-proofs" — must be PRIVATE
+        sync: false          # "tedx-payment-proofs" — must be PRIVATE
       - key: S3_ENDPOINT_URL
         sync: false          # https://<ref>.storage.supabase.co/storage/v1/s3
       - key: S3_REGION
         sync: false
+      # Storage → S3 access keys. NOT the anon/publishable or service key, and
+      # never exposed to the frontend — this pair can write to every bucket.
       - key: S3_ACCESS_KEY_ID
         sync: false
       - key: S3_SECRET_ACCESS_KEY
         sync: false
+      # Builds the public object URLs the API returns. The S3 endpoint above
+      # answers signed requests only, so a URL derived from it is unreadable in
+      # a browser even when the bucket is public.
+      - key: SUPABASE_URL
+        sync: false          # https://<ref>.supabase.co
 
       # ── Email ────────────────────────────────────────────────────────────
       # DEFAULT_FROM_EMAIL must match the authenticated sending account or

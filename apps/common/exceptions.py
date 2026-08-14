@@ -15,6 +15,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
+from .storages import MediaUploadError
+
 logger = logging.getLogger('apps.api')
 
 GENERIC_MESSAGES = {
@@ -49,6 +51,14 @@ def api_exception_handler(exc, context):
             response = Response(status=status.HTTP_404_NOT_FOUND)
         elif isinstance(exc, PermissionDenied):
             response = Response(status=status.HTTP_403_FORBIDDEN)
+        elif isinstance(exc, MediaUploadError):
+            # Object storage was unreachable or refused the file. Nothing was
+            # written, so this is worth retrying — which 503 says and 500 does
+            # not. The exception's own message never contains credentials.
+            logger.error('Media upload failed in %s: %s', context.get('view'), exc)
+            response = Response(
+                {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
         else:
             # Unhandled — let Django's own 500 machinery log and report it.
             logger.exception('Unhandled API exception in %s', context.get('view'))

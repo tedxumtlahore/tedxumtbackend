@@ -30,19 +30,26 @@ Two things must be true or the deploy is wasted effort:
 Not the direct connection (IPv6-only, and Render cannot reach it) and not
 transaction mode (wrong shape for `loaddata`'s long transaction).
 
-**Storage.** Create two buckets:
+**Storage.** Create two buckets under Storage → New bucket:
 
 | Bucket | Visibility | Holds |
 |---|---|---|
-| `media` | **Public** | gallery, portraits, sponsor logos, blog covers |
-| `payment-proofs` | **Private** | transfer screenshots only |
+| `tedx-media` | **Public** | gallery, portraits, sponsor logos, blog covers |
+| `tedx-payment-proofs` | **Private** | transfer screenshots only |
 
 The split is not cosmetic. A payment screenshot routinely shows the sender's
 wallet balance and recent transactions; the private bucket means an unsigned
 URL does not resolve even if the path leaks. `apps/common/storages.py` routes
 `Order.payment_proof` to the private one and everything else to the public one.
 
+No policies or folders need creating by hand. Public buckets are world-readable
+already, the service key bypasses RLS for writes, and folders (`team/`,
+`gallery/`, `speakers/`, …) are just key prefixes that appear as each model's
+`upload_to` is first used.
+
 Then Settings → Storage → S3 access keys → new key. **The secret is shown once.**
+That key pair is separate from the anon/publishable and service keys, and it
+grants full read/write to every bucket — server-side only, never in Vercel.
 
 ## 2. Render
 
@@ -71,17 +78,49 @@ for every visitor after a quiet spell, and a stalled scanner when doors open.
 | `CSRF_TRUSTED_ORIGINS` | the Vercel origin **and** the Render origin |
 | `TICKET_BASE_URL` | the Vercel origin |
 | `DATABASE_URL` | Supabase session pooler string |
-| `MEDIA_BUCKET` | `media` |
-| `PRIVATE_MEDIA_BUCKET` | `payment-proofs` |
+| `MEDIA_BUCKET` | `tedx-media` |
+| `PRIVATE_MEDIA_BUCKET` | `tedx-payment-proofs` |
 | `S3_ENDPOINT_URL` | `https://<project-ref>.storage.supabase.co/storage/v1/s3` |
 | `S3_REGION` | the project's region |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | from Supabase |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Storage → S3 access keys |
+| `SUPABASE_URL` | `https://<project-ref>.supabase.co` — builds the public image URLs |
 | `EMAIL_HOST` / `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | SMTP |
 | `DEFAULT_FROM_EMAIL` | **must match the authenticated sending account**, or tickets land in spam |
 | `ADMIN_EMAIL` | where 500s are mailed |
 
 Leaving `MEDIA_BUCKET` unset falls back to local disk — correct only if you
 have a real persistent volume, which Render's free tier does not offer at all.
+Production logs a `RuntimeWarning` at startup when it is missing, because the
+failure is otherwise invisible: uploads appear to succeed in the admin and then
+serve a 404 to every visitor.
+
+**Checking it worked.** After the first deploy, upload a photo to any Team
+member and look at `/api/team/`. `photo` should read
+
+```
+https://<project-ref>.supabase.co/storage/v1/object/public/tedx-media/team/<name>-<8 hex>.jpg
+```
+
+If it still says `…onrender.com/media/…`, `MEDIA_BUCKET` did not reach the
+process. If it contains `/storage/v1/s3/`, `SUPABASE_URL` is missing — that is
+the signed-only S3 API path and a browser cannot read it.
+
+### Media already in the database
+
+Rows uploaded before storage was switched on still hold paths like
+`team/new_02.jpg.jpeg`. `sync_media_to_storage` copies whatever is on local
+disk into the bucket **under the same key**, so those rows start resolving with
+no database change:
+
+```bash
+python manage.py sync_media_to_storage           # report only, writes nothing
+python manage.py sync_media_to_storage --apply
+```
+
+It never deletes, never overwrites, and never edits a row, so it is safe to
+re-run. It needs the files to actually be on the disk it runs against — on
+Render they were discarded at the previous deploy, so run it locally with
+`DATABASE_URL` pointed at Supabase, or simply re-upload through the admin.
 
 ## 3. Vercel
 

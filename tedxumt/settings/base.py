@@ -70,6 +70,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # After MessageMiddleware — it reports failed uploads through the message
+    # framework. See apps/common/middleware.py.
+    'apps.common.middleware.MediaUploadErrorMiddleware',
 ]
 
 ROOT_URLCONF = 'tedxumt.urls'
@@ -130,6 +133,123 @@ MEDIA_ROOT = BASE_DIR / env('MEDIA_ROOT', default='media')
 # Reject uploads larger than 10 MB outright.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
+# ── Media storage (Supabase Storage, S3-compatible) ────────────────────────
+# Render, Heroku and friends have an ephemeral filesystem: every deploy throws
+# away whatever was written to disk. Worse, Django does not serve MEDIA_URL at
+# all when DEBUG is False, so a local-disk upload in production is a 404 the
+# moment it is written. Uploads therefore go to Supabase Storage, which speaks
+# S3, so django-storages drives it with no bespoke client.
+#
+# Two buckets, because the two kinds of upload have opposite exposure needs —
+# see apps/common/storages.py. Setting MEDIA_BUCKET switches this on; without
+# it everything falls back to local disk, which is what development and the
+# test suite want.
+#
+# This lives in base.py rather than production.py so that a developer can point
+# a local runserver at a scratch bucket and exercise the real upload path. It
+# stays off by default in both environments.
+MEDIA_BUCKET = env('MEDIA_BUCKET', default='')
+
+
+def _public_object_host(bucket):
+    """
+    The host+path prefix that serves a public bucket over plain HTTPS.
+
+    This is the one place Supabase's S3 compatibility layer leaks. The S3
+    endpoint (`.../storage/v1/s3`) only answers SigV4-signed requests, so a URL
+    built from it — which is what django-storages does by default — is not
+    readable by a browser even when the bucket is public. Supabase serves those
+    objects from a different path entirely:
+
+        https://<ref>.supabase.co/storage/v1/object/public/<bucket>/<key>
+
+    Handing that to `custom_domain` makes `.url()` return exactly it. Note this
+    is applied to the PUBLIC bucket only: with `custom_domain` set and no
+    CloudFront signer, django-storages returns an unsigned URL even when
+    `querystring_auth` is on, which would break the private bucket's expiring
+    links. The private storage is therefore left to presign against S3.
+
+    `custom_domain` takes no scheme — `url_protocol` (https:) supplies it.
+    """
+    base = env('MEDIA_PUBLIC_BASE_URL', default='') or env('SUPABASE_URL', default='')
+
+    if not base:
+        # Derive from the S3 endpoint as a last resort:
+        # https://<ref>.storage.supabase.co/storage/v1/s3 -> the same host.
+        base = env('S3_ENDPOINT_URL', default='').split('/storage/v1/s3')[0]
+
+    host = base.split('://')[-1].strip('/')
+    return f'{host}/storage/v1/object/public/{bucket}'
+
+
+if MEDIA_BUCKET:
+    _S3_BASE = {
+        'access_key': env('S3_ACCESS_KEY_ID'),
+        'secret_key': env('S3_SECRET_ACCESS_KEY'),
+        'endpoint_url': env('S3_ENDPOINT_URL'),
+        'region_name': env('S3_REGION', default='us-east-1'),
+        # Supabase (and most S3-compatible services that are not AWS) serve
+        # buckets as a path, not as a subdomain of the endpoint.
+        'addressing_style': 'path',
+        # boto3 still presigns with SigV2 by default. Supabase's S3 endpoint
+        # only accepts SigV4, so without this every signed payment-proof URL
+        # comes back rejected — and only the private bucket uses signing, so
+        # the failure would show up nowhere until an organiser opened a
+        # screenshot.
+        'signature_version': 's3v4',
+        # Object ACLs are an AWS concept; Supabase Storage rejects them.
+        # Public vs private is a property of the bucket itself there.
+        'default_acl': None,
+        # Never let a second upload silently replace the first. Names are
+        # already made unique by apps.common.storages.sanitized_filename; this
+        # is the backstop.
+        'file_overwrite': False,
+    }
+
+    STORAGES = {
+        # Public bucket: gallery, portraits, logos, blog covers. These are
+        # meant to be seen, so URLs are unsigned and therefore cacheable.
+        'default': {
+            'BACKEND': 'apps.common.supabase_storage.SupabasePublicStorage',
+            'OPTIONS': {
+                **_S3_BASE,
+                'bucket_name': MEDIA_BUCKET,
+                # Unsigned, stable and therefore cacheable — and pointed at the
+                # path that actually serves public objects. See
+                # `_public_object_host`.
+                'querystring_auth': False,
+                'custom_domain': _public_object_host(MEDIA_BUCKET),
+            },
+        },
+        # Private bucket: payment proofs only. URLs are signed and expire, so a
+        # leaked link stops working — these screenshots show the sender's
+        # balance and transaction history.
+        'private': {
+            'BACKEND': 'apps.common.supabase_storage.SupabasePrivateStorage',
+            'OPTIONS': {
+                **_S3_BASE,
+                'bucket_name': env('PRIVATE_MEDIA_BUCKET', default=f'{MEDIA_BUCKET}-private'),
+                'querystring_auth': True,
+                'querystring_expire': env.int('PRIVATE_URL_EXPIRY', default=600),
+            },
+        },
+    }
+else:
+    STORAGES = {
+        'default': {'BACKEND': 'apps.common.storages.LocalMediaStorage'},
+    }
+
+# staticfiles is separate from media in every environment; production.py swaps
+# in WhiteNoise. Set here so the key always exists whichever branch ran.
+STORAGES['staticfiles'] = {
+    'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+}
+
+# When an image is replaced or its record deleted, remove the object it left
+# behind rather than paying to store it forever. See apps/common/cleanup.py —
+# it refuses to delete anything another row still points at.
+MEDIA_DELETE_ORPHANS = env.bool('MEDIA_DELETE_ORPHANS', default=True)
 
 # ── Default Primary Key ────────────────────────────────────────────────────
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

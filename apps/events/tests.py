@@ -338,3 +338,53 @@ class EventAPITests(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, 400)
+
+
+class EventAdminFormTests(SimpleTestCase):
+    """
+    `EventAdmin` declares explicit `fieldsets`, so any field left out of them is
+    invisible on the form and can never be changed by an organizer.
+
+    That is how registration silently broke: the whole ticketing block was
+    missing, `registration_enabled` defaults to False, and every event reported
+    "Registration for this event has not opened yet." with no checkbox anywhere
+    to tick. Nothing failed loudly — the register button simply never appeared.
+    """
+
+    def admin_fields(self):
+        from django.contrib import admin
+
+        model_admin = admin.site._registry[Event]
+        return {
+            field
+            for _, options in model_admin.fieldsets
+            for field in options['fields']
+        }
+
+    def test_registration_enabled_is_editable(self):
+        self.assertIn('registration_enabled', self.admin_fields())
+
+    def test_every_ticketing_field_is_editable(self):
+        shown = self.admin_fields()
+
+        for name in (
+            'ticket_price', 'currency', 'ticket_prefix',
+            'registration_opens_at', 'registration_closes_at',
+            'registration_hold_minutes',
+        ):
+            with self.subTest(field=name):
+                self.assertIn(name, shown)
+
+    def test_no_editable_field_is_unreachable(self):
+        """Catches the next field added to the model and forgotten in the admin."""
+        from django.contrib import admin
+
+        model_admin = admin.site._registry[Event]
+        editable = {
+            field.name
+            for field in Event._meta.get_fields()
+            if getattr(field, 'editable', False) and not field.auto_created
+        }
+        unreachable = editable - self.admin_fields() - set(model_admin.readonly_fields)
+
+        self.assertEqual(unreachable, set())

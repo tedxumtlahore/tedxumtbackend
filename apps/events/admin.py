@@ -31,6 +31,23 @@ class EventAdmin(admin.ModelAdmin):
                 'registration_url', 'max_attendees', 'event_type', 'status', 'is_featured',
             ),
         }),
+        # Without this block none of the ticketing fields render on the form,
+        # so `registration_enabled` — which defaults to False — can never be
+        # ticked, and every event reports "Registration for this event has not
+        # opened yet." with no way for an organizer to change it.
+        ('Ticketing', {
+            'fields': (
+                'registration_enabled',
+                'ticket_price', 'currency', 'ticket_prefix',
+                'registration_opens_at', 'registration_closes_at',
+                'registration_hold_minutes',
+            ),
+            'description': (
+                'Registration is closed until <b>registration enabled</b> is ticked. '
+                'Capacity comes from <b>max attendees</b> above; leave it blank for '
+                'unlimited. A ticket price of 0 issues free tickets instantly.'
+            ),
+        }),
         ('Media', {
             'fields': ('featured_image', 'featured_image_preview', 'banner_image', 'banner_image_preview'),
         }),

@@ -80,9 +80,18 @@ class CoreValue(BaseModel):
 
 
 class Message(BaseModel):
-    """President or Organizer message — shown on About page."""
+    """
+    A named person, their role, a portrait and something they wrote.
+
+    Originally just the President/Organizer notes on the About page. The
+    `founder` type reuses the same shape for the dedicated Founder page — the
+    fields wanted there (name, title, photo, long-form text) are exactly these,
+    so it needs no second model, no new admin and no new endpoint. Because
+    `message_type` is unique there is at most one founder, which is the point.
+    """
 
     class MessageTypeChoices(models.TextChoices):
+        FOUNDER = 'founder', 'Founder'
         PRESIDENT = 'president', 'President'
         ORGANIZER = 'organizer', 'Organizer'
         VICE_PRESIDENT = 'vice_president', 'Vice President'

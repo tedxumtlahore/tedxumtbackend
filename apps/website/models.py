@@ -114,7 +114,7 @@ class Message(BaseModel):
     class Meta:
         ordering = ['order', 'message_type']
         verbose_name = 'Message'
-        verbose_name_plural = 'Messages (President / Organizer)'
+        verbose_name_plural = 'Messages (Founder / President / Organizer)'
 
     def __str__(self):
         return f'{self.person_name} — {self.get_message_type_display()}'

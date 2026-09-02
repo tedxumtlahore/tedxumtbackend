@@ -52,7 +52,12 @@ def about_view(request):
     context = {'request': request}
     sections = AboutSection.objects.filter(is_active=True, is_visible=True)
     values = CoreValue.objects.filter(is_active=True)
-    messages = Message.objects.filter(is_active=True, is_visible=True)
+    # The founder has a page of their own, so leaving them in here would render
+    # the same portrait and text twice across two pages. Drop this exclude to
+    # put them back on About as well.
+    messages = Message.objects.filter(is_active=True, is_visible=True).exclude(
+        message_type=Message.MessageTypeChoices.FOUNDER
+    )
 
     return Response({
         'sections': AboutSectionSerializer(sections, many=True, context=context).data,

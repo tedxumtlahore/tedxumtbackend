@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import AboutSection, CoreValue, Message
+from .models import AboutSection, CoreValue, Founder, Message
 
 
 @admin.register(AboutSection)
@@ -76,3 +76,49 @@ class MessageAdmin(admin.ModelAdmin):
         return '—'
 
     photo_preview.short_description = 'Preview'
+
+
+@admin.register(Founder)
+class FounderAdmin(admin.ModelAdmin):
+    """
+    The Founder page, editable on its own rather than buried in Messages.
+
+    There is only ever one founder, so the add button disappears once a row
+    exists — the same shape of guarantee HeroSection makes, enforced where an
+    editor would notice it rather than as a database constraint.
+    """
+
+    list_display = ['name', 'role_title', 'is_visible', 'updated_at']
+    search_fields = ['name', 'role_title', 'story']
+    list_filter = ['is_visible', 'is_active']
+    readonly_fields = ['photo_preview', 'created_at', 'updated_at']
+
+    fieldsets = (
+        ('Founder', {
+            'fields': ('name', 'role_title', 'is_visible'),
+        }),
+        ('Story', {
+            'fields': ('story',),
+            'description': 'Leave a blank line between paragraphs — they are preserved on the site.',
+        }),
+        ('Photo', {
+            'fields': ('photo', 'photo_preview'),
+        }),
+        ('Links', {
+            'fields': ('email', 'linkedin', 'instagram'),
+            'classes': ('collapse',),
+        }),
+        ('System', {
+            'fields': ('is_active', 'created_at', 'updated_at'),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        # One founder. Editing the existing row is the intended path.
+        return not Founder.objects.exists()
+
+    @admin.display(description='Preview')
+    def photo_preview(self, obj):
+        if obj.photo:
+            return format_html('<img src="{}" style="max-height:160px;border-radius:6px" />', obj.photo.url)
+        return '—'

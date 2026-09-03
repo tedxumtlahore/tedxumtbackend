@@ -2,6 +2,7 @@
 Website views - combined About page payload and CRUD-friendly APIs.
 """
 
+from django.http import Http404
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
@@ -10,8 +11,13 @@ from rest_framework.response import Response
 from apps.common.mixins import ActiveQuerysetMixin, SerializerContextMixin, VisibleQuerysetMixin
 from apps.common.permissions import IsStaffOrReadOnly
 
-from .models import AboutSection, CoreValue, Message
-from .serializers import AboutSectionSerializer, CoreValueSerializer, MessageSerializer
+from .models import AboutSection, CoreValue, Founder, Message
+from .serializers import (
+    AboutSectionSerializer,
+    CoreValueSerializer,
+    FounderSerializer,
+    MessageSerializer,
+)
 
 
 class AboutSectionViewSet(SerializerContextMixin, VisibleQuerysetMixin, viewsets.ModelViewSet):
@@ -52,15 +58,26 @@ def about_view(request):
     context = {'request': request}
     sections = AboutSection.objects.filter(is_active=True, is_visible=True)
     values = CoreValue.objects.filter(is_active=True)
-    # The founder has a page of their own, so leaving them in here would render
-    # the same portrait and text twice across two pages. Drop this exclude to
-    # put them back on About as well.
-    messages = Message.objects.filter(is_active=True, is_visible=True).exclude(
-        message_type=Message.MessageTypeChoices.FOUNDER
-    )
+    messages = Message.objects.filter(is_active=True, is_visible=True)
 
     return Response({
         'sections': AboutSectionSerializer(sections, many=True, context=context).data,
         'values': CoreValueSerializer(values, many=True, context=context).data,
         'messages': MessageSerializer(messages, many=True, context=context).data,
     })
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def founder_view(request):
+    """
+    GET /api/founder/ — the founder profile, or 404 before one is created.
+
+    A 404 rather than an empty object: the page treats "no founder yet" as an
+    empty state, and an empty object would have it render a blank profile.
+    """
+    founder = Founder.objects.filter(is_active=True, is_visible=True).first()
+    if founder is None:
+        raise Http404('No founder has been added yet.')
+
+    return Response(FounderSerializer(founder, context={'request': request}).data)

@@ -1,7 +1,7 @@
-from django.db.utils import IntegrityError
-from django.test import SimpleTestCase, TestCase
+from django.apps import apps as django_apps
+from django.test import RequestFactory, SimpleTestCase, TestCase
 
-from .models import AboutSection, CoreValue, Message
+from .models import AboutSection, CoreValue, Founder, Message
 from .serializers import AboutSectionSerializer, CoreValueSerializer, MessageSerializer
 
 
@@ -62,60 +62,114 @@ class WebsiteSerializerTests(SimpleTestCase):
 
 
 class FounderTests(TestCase):
-    """
-    The Founder page is a `Message` with `message_type='founder'`, served by the
-    existing MessageViewSet through its `message_type` lookup.
-    """
+    """The Founder page is its own model, served at /api/founder/."""
 
     def founder(self, **overrides):
         fields = {
-            'message_type': Message.MessageTypeChoices.FOUNDER,
-            'person_name': 'Ayesha Bint e Hamid',
+            'name': 'Ayesha Bint e Hamid',
             'role_title': 'Founder · TEDxUMT Lahore',
-            'message_body': 'First paragraph.\n\nSecond paragraph.',
+            'story': 'First paragraph.\n\nSecond paragraph.',
+            'is_visible': True,
+        }
+        fields.update(overrides)
+        return Founder.objects.create(**fields)
+
+    def test_founder_is_served(self):
+        self.founder()
+
+        response = self.client.get('/api/founder/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['name'], 'Ayesha Bint e Hamid')
+        self.assertIn('Second paragraph.', response.json()['story'])
+
+    def test_missing_founder_is_a_404_not_a_500(self):
+        """The page must degrade to an empty state before anyone fills it in."""
+        self.assertEqual(self.client.get('/api/founder/').status_code, 404)
+
+    def test_hidden_founder_is_not_public(self):
+        self.founder(is_visible=False)
+
+        self.assertEqual(self.client.get('/api/founder/').status_code, 404)
+
+    def test_founder_is_no_longer_a_message_type(self):
+        """Two places to edit one thing is the confusion this model removed."""
+        self.assertNotIn('founder', Message.MessageTypeChoices.values)
+
+    def test_admin_allows_only_one_founder(self):
+        from django.contrib import admin as django_admin
+
+        model_admin = django_admin.site._registry[Founder]
+        request = RequestFactory().get('/admin/')
+
+        self.assertTrue(model_admin.has_add_permission(request))
+        self.founder()
+        self.assertFalse(model_admin.has_add_permission(request))
+
+
+class FounderMigrationTests(TestCase):
+    """
+    The data migration that moves an existing founder Message into Founder.
+
+    Production already has a founder filled in as a Message, so this runs
+    against real content on the next deploy — worth exercising rather than
+    trusting. The functions only use `apps.get_model`, so handing them the real
+    registry tests the logic exactly as the migration runs it.
+    """
+
+    def setUp(self):
+        from importlib import import_module
+
+        self.mig = import_module(
+            'apps.website.migrations.0005_move_founder_message_to_founder'
+        )
+
+    def message(self, **overrides):
+        fields = {
+            'message_type': 'founder',
+            'person_name': 'Ayesha Bint e Hamid',
+            'role_title': 'Founder',
+            'message_body': 'Para one.\n\nPara two.',
+            'photo': 'founder/portrait-abc12345.jpg',
             'is_visible': True,
         }
         fields.update(overrides)
         return Message.objects.create(**fields)
 
-    def test_founder_is_a_valid_message_type(self):
-        self.assertEqual(Message.MessageTypeChoices.FOUNDER, 'founder')
+    def test_founder_message_is_copied_and_removed(self):
+        self.message()
 
-    def test_founder_is_fetchable_by_type(self):
-        self.founder()
+        self.mig.message_to_founder(django_apps, None)
 
-        response = self.client.get('/api/messages/founder/')
+        founder = Founder.objects.get()
+        self.assertEqual(founder.name, 'Ayesha Bint e Hamid')
+        self.assertIn('Para two.', founder.story)
+        # The photo is carried across by name, so the object already in
+        # Supabase Storage is reused rather than needing a re-upload.
+        self.assertEqual(founder.photo.name, 'founder/portrait-abc12345.jpg')
+        self.assertFalse(Message.objects.filter(message_type='founder').exists())
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['person_name'], 'Ayesha Bint e Hamid')
+    def test_nothing_happens_without_a_founder_message(self):
+        self.mig.message_to_founder(django_apps, None)
 
-    def test_missing_founder_is_a_404_not_a_500(self):
-        """The page must degrade to an empty state before anyone fills it in."""
-        response = self.client.get('/api/messages/founder/')
+        self.assertFalse(Founder.objects.exists())
 
-        self.assertEqual(response.status_code, 404)
+    def test_an_existing_founder_is_never_clobbered(self):
+        Founder.objects.create(name='Real Edit', story='Kept')
+        self.message()
 
-    def test_hidden_founder_is_not_public(self):
-        self.founder(is_visible=False)
+        self.mig.message_to_founder(django_apps, None)
 
-        self.assertEqual(self.client.get('/api/messages/founder/').status_code, 404)
+        self.assertEqual(Founder.objects.get().name, 'Real Edit')
 
-    def test_founder_is_excluded_from_the_about_payload(self):
-        """Otherwise the same portrait and text render on two different pages."""
-        self.founder()
-        Message.objects.create(
-            message_type=Message.MessageTypeChoices.PRESIDENT,
-            person_name='Someone Else', role_title='President',
-            message_body='Hello', is_visible=True,
+    def test_reverse_puts_the_message_back(self):
+        self.message()
+        self.mig.message_to_founder(django_apps, None)
+
+        self.mig.founder_to_message(django_apps, None)
+
+        self.assertEqual(
+            Message.objects.get(message_type='founder').person_name,
+            'Ayesha Bint e Hamid',
         )
-
-        types = [m['message_type'] for m in self.client.get('/api/about/').json()['messages']]
-
-        self.assertNotIn('founder', types)
-        self.assertIn('president', types)
-
-    def test_only_one_founder_can_exist(self):
-        self.founder()
-
-        with self.assertRaises(IntegrityError):
-            self.founder(person_name='Someone Else')
+        self.assertFalse(Founder.objects.exists())

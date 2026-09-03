@@ -12,7 +12,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 ENDPOINT_GROUPS = {
-    'site': ['api-settings', 'api-navigation', 'api-about'],
+    'site': ['api-settings', 'api-navigation', 'api-about', 'api-founder'],
     'events': ['api-featured-events'],
     'speakers': ['api-featured-speakers'],
     'team': ['api-team'],

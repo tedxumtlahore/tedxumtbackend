@@ -81,17 +81,14 @@ class CoreValue(BaseModel):
 
 class Message(BaseModel):
     """
-    A named person, their role, a portrait and something they wrote.
+    President or Organizer message — shown on About page.
 
-    Originally just the President/Organizer notes on the About page. The
-    `founder` type reuses the same shape for the dedicated Founder page — the
-    fields wanted there (name, title, photo, long-form text) are exactly these,
-    so it needs no second model, no new admin and no new endpoint. Because
-    `message_type` is unique there is at most one founder, which is the point.
+    The founder briefly lived here as a fourth type. They have their own model
+    now (see `Founder`), because a message is a quote attached to a role while
+    the founder page is a profile.
     """
 
     class MessageTypeChoices(models.TextChoices):
-        FOUNDER = 'founder', 'Founder'
         PRESIDENT = 'president', 'President'
         ORGANIZER = 'organizer', 'Organizer'
         VICE_PRESIDENT = 'vice_president', 'Vice President'
@@ -114,7 +111,53 @@ class Message(BaseModel):
     class Meta:
         ordering = ['order', 'message_type']
         verbose_name = 'Message'
-        verbose_name_plural = 'Messages (Founder / President / Organizer)'
+        verbose_name_plural = 'Messages (President / Organizer)'
 
     def __str__(self):
         return f'{self.person_name} — {self.get_message_type_display()}'
+
+
+class Founder(BaseModel):
+    """
+    The Founder page — a singleton, like HeroSection.
+
+    Split out of `Message` once the founder got a page of their own. A message
+    is a quote attached to a role; this is a profile, and it wants fields a
+    quote does not: a story rather than a body, and somewhere to link.
+
+    Nothing enforces a single row at the database level — the admin hides the
+    add button once one exists, and the API serves the first visible row, which
+    is the same shape of guarantee HeroSection makes.
+    """
+
+    name = models.CharField(max_length=200)
+    role_title = models.CharField(
+        max_length=200,
+        default='Founder · TEDxUMT Lahore',
+        help_text='Shown under the name, e.g. Founder & Licensee · TEDxUMT Lahore',
+    )
+    photo = models.ImageField(
+        upload_to='founder/',
+        blank=True,
+        help_text='Portrait. A tall crop works best — it sits beside the story.',
+    )
+    story = models.TextField(
+        help_text='The founder\u2019s story. Leave a blank line between paragraphs.',
+    )
+    email = models.EmailField(blank=True)
+    linkedin = models.URLField(blank=True)
+    instagram = models.URLField(blank=True)
+    is_visible = models.BooleanField(
+        default=True,
+        help_text='Untick to hide the Founder page without deleting anything.',
+    )
+
+    class Meta:
+        # Singular plural name: the changelist header should read "Founder",
+        # not "Founders", because there is only ever one.
+        verbose_name = 'Founder'
+        verbose_name_plural = 'Founder'
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return self.name

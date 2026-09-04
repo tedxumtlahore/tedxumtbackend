@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.common.utils import get_file_url
 
-from .models import AboutSection, CoreValue, Message
+from .models import AboutSection, CoreValue, Founder, Message
 
 
 class AboutSectionSerializer(serializers.ModelSerializer):
@@ -41,3 +41,18 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_photo(self, obj):
         request = self.context.get('request')
         return get_file_url(request, obj.photo)
+
+
+class FounderSerializer(serializers.ModelSerializer):
+    photo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Founder
+        fields = [
+            'id', 'name', 'role_title', 'photo', 'story',
+            'email', 'linkedin', 'instagram',
+            'is_visible', 'created_at', 'updated_at', 'is_active',
+        ]
+
+    def get_photo(self, obj):
+        return get_file_url(self.context.get('request'), obj.photo)
